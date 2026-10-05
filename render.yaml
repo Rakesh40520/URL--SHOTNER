@@ -52,3 +52,8 @@ services:
       # on first deploy and keeps it stable across redeploys)
       - key: JWT_SECRET
         generateValue: true
+
+      # Disable the H2 database console in production (only needed for
+      # local dev — it's an unnecessary attack surface on a public server)
+      - key: H2_CONSOLE_ENABLED
+        value: "false"
