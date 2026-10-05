@@ -1,6 +1,5 @@
 # https://render.com/docs/blueprint-spec
 # Configured for Neon PostgreSQL (free forever, never expires)
-# Render auto-discovers this file and provisions the web service below.
 
 services:
   - type: web
@@ -10,31 +9,7 @@ services:
     dockerfilePath: ./Dockerfile
     healthCheckPath: /actuator/health
     envVars:
-      # Activate the Postgres profile
-      - key: SPRING_PROFILES_ACTIVE
-        value: postgres
-
-      # Neon PostgreSQL connection details
-      - key: DB_HOST
-        value: ep-rough-sky-avr26tyd-pooler.c-11.us-east-1.aws.neon.tech
-      - key: DB_PORT
-        value: "5432"
-      - key: DB_NAME
-        value: neondb
-      - key: DB_USER
-        value: neondb_owner
-      # Securely managed in Render — sync: false ensures your password
-      # is NEVER committed to your public GitHub repository!
-      - key: DB_PASSWORD
-        sync: false
-      - key: DB_SSLMODE
-        value: "?sslmode=require"
-
       # Auto-generate a strong JWT secret (Render creates a random value
       # on first deploy and keeps it stable across redeploys)
       - key: JWT_SECRET
         generateValue: true
-
-      # Disable the H2 database console in production
-      - key: H2_CONSOLE_ENABLED
-        value: "false"

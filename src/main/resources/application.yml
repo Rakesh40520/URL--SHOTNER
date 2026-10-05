@@ -7,24 +7,20 @@ spring:
     name: url-shortener
 
   datasource:
-    url: jdbc:h2:file:./data/urlshortenerdb;DB_CLOSE_ON_EXIT=FALSE
-    driver-class-name: org.h2.Driver
-    username: sa
-    password: ""
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://${DB_HOST:ep-rough-sky-avr26tyd-pooler.c-11.us-east-1.aws.neon.tech}:${DB_PORT:5432}/${DB_NAME:neondb}?sslmode=require}
+    driver-class-name: org.postgresql.Driver
+    username: ${DB_USER:neondb_owner}
+    password: ${DB_PASSWORD:npg_2qEjVrAIJkm0}
 
   jpa:
     hibernate:
       ddl-auto: update
     show-sql: false
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
     properties:
       hibernate:
         format_sql: true
     open-in-view: false
-
-  h2:
-    console:
-      enabled: ${H2_CONSOLE_ENABLED:true}
-      path: /h2-console
 
   # Only actually connected to when app.redis.enabled=true (see
   # RedisRateLimitConfig / CacheConfig) - otherwise Spring Data Redis just
@@ -196,24 +192,7 @@ resilience4j:
         permitted-number-of-calls-in-half-open-state: 3
         automatic-transition-from-open-to-half-open-enabled: true
 
----
-# Run with: java -jar url-shortener.jar --spring.profiles.active=postgres
-# Works locally (defaults to localhost/postgres) AND on Render/Railway/etc.
-# (which set DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD via their
-# managed-database addons).
-spring:
-  config:
-    activate:
-      on-profile: postgres
-  datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:urlshortener}${DB_SSLMODE:}}
-    driver-class-name: org.postgresql.Driver
-    username: ${DB_USER:postgres}
-    password: ${DB_PASSWORD:postgres}
-  jpa:
-    hibernate:
-      ddl-auto: update
-    database-platform: org.hibernate.dialect.PostgreSQLDialect
+
 
 ---
 # Primary + read-replica Postgres. Pair with `docker-compose.replica.yml`
