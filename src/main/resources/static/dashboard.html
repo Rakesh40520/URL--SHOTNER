@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="css/nav.css"/>
 <link rel="stylesheet" href="css/dashboard.css"/>
 <style>
+  .dash-pager { flex-wrap: wrap; }
   .dash-pager { display: flex; align-items: center; justify-content: center; gap: 16px; margin-top: 16px; }
   .dash-pager[hidden] { display: none; }
   .pager-status { font-family: var(--font-mono, monospace); font-size: .85rem; opacity: .75; }
@@ -65,6 +66,7 @@
 </main>
 
 <script src="js/auth.js"></script>
+<script src="js/ui.js"></script>
 <script src="js/nav.js"></script>
 <script>
   // Guard: redirect to login if not authenticated
@@ -158,6 +160,28 @@
     loadUrls(currentPage + 1);
   });
 
+
+  // ── Copy handling ──────────────────────────────────────────────
+  // One delegated listener on the wrapper (not per-row listeners), so it
+  // keeps working after every re-render, pagination or delete.
+  // Clicking a short code copies the full short link.
+  document.getElementById('table-wrap').addEventListener('click', async e => {
+    const chip = e.target.closest('.short-code-chip');
+    const btn  = e.target.closest('.copy-btn');
+    const key  = e.target.closest('.key-code');
+    const el   = chip || btn || key;
+    if (!el) return;
+
+    const text = key ? key.dataset.key : UI.shortUrlForCopy(el.dataset.url || el.dataset.code);
+    const ok = await UI.copyText(text);
+    if (!ok) { UI.toast('Could not copy — please copy it manually', { type: 'error' }); return; }
+
+    if (chip)      UI.flash(chip, chip.querySelector('.copy-hint'), '✓ copied');
+    else if (btn)  UI.flash(btn,  btn.querySelector('.btn-label'), 'Copied');
+    else           UI.flash(key,  key, 'Copied ✓');
+    UI.toast(key ? 'Management key copied' : 'Copied ' + text.replace(/^https?:\/\//, ''));
+  });
+
   function renderTable(urls) {
     if (urls.length === 0) {
       document.getElementById('table-wrap').innerHTML = `
@@ -175,25 +199,25 @@
     tbody.innerHTML = urls.map(u => `
       <tr data-code="${esc(u.shortCode)}">
         <td class="td-url" title="${esc(u.longUrl)}">${esc(u.longUrl)}</td>
-        <td class="td-short">
+        <td class="td-short" data-label="Short code">
           <button class="short-code-chip" data-code="${esc(u.shortCode)}" data-url="${esc(u.shortUrl)}" title="Click to copy short link">
             <span class="code-txt">${esc(u.shortCode)}</span>
             <span class="copy-hint" aria-hidden="true">copy</span>
           </button>
         </td>
-        <td>${fmt(u.createdAt)}</td>
-        <td class="td-clicks">${u.clickCount}</td>
-        <td>
+        <td data-label="Created">${fmt(u.createdAt)}</td>
+        <td class="td-clicks" data-label="Clicks">${u.clickCount}</td>
+        <td data-label="Status">
           <span class="badge badge-${badgeClass(u.status)}" title="${esc(u.statusReason || '')}">${esc(u.status)}</span>
         </td>
-        <td class="td-actions">
+        <td class="td-actions" data-label="">
           <button class="action-btn track-btn" data-code="${esc(u.shortCode)}" title="Track this parcel in manifest">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             Track
           </button>
           <button class="action-btn copy-btn" data-url="${esc(u.shortUrl)}" title="Copy short URL">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-            Copy
+            <span class="btn-label">Copy</span>
           </button>
           <a class="action-btn" href="${esc(u.shortUrl)}" target="_blank" rel="noopener" title="Open short URL">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
@@ -236,34 +260,6 @@
     tbody.querySelectorAll('.track-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         window.location.href = `/index.html?trackCode=${encodeURIComponent(btn.dataset.code)}`;
-      });
-    });
-
-    // Click short code to copy with instant visual feedback
-    tbody.querySelectorAll('.short-code-chip').forEach(chip => {
-      chip.addEventListener('click', async () => {
-        try {
-          await navigator.clipboard.writeText(chip.dataset.url || chip.dataset.code);
-          const origContent = chip.innerHTML;
-          chip.innerHTML = '<span class="code-txt" style="color:var(--success,#2D6A4F)">✓ Copied!</span>';
-          chip.classList.add('copied');
-          setTimeout(() => {
-            chip.innerHTML = origContent;
-            chip.classList.remove('copied');
-          }, 1400);
-        } catch { /* fallback */ }
-      });
-    });
-
-    // Copy buttons
-    tbody.querySelectorAll('.copy-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        try {
-          await navigator.clipboard.writeText(btn.dataset.url);
-          btn.textContent = '✓ Copied';
-          btn.classList.add('copied');
-          setTimeout(() => { btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy`; btn.classList.remove('copied'); }, 1800);
-        } catch { /* fallback: select text */ }
       });
     });
 

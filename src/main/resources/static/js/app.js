@@ -30,83 +30,150 @@ function formatDate(iso) {
   });
 }
 
-/* ── Stamp animation ── */
-const overlay  = document.getElementById('stamp-overlay');
-const seal     = document.getElementById('stamp-seal');
-const sealCode = document.getElementById('seal-code');
-
+/* ── Dispatch progress animation ──────────────────────────────────────
+ * Stages advance while the real request is in flight. Progress eases toward
+ * ~90% and only reaches 100% once the server actually answers, so it never
+ * "finishes" before the work is done. If the server is slow (Render's free
+ * tier sleeps when idle) a note explains the wait instead of looking frozen.
+ */
+const overlay      = document.getElementById('stamp-overlay');
+const sheet        = document.getElementById('dispatch-sheet');
+const seal         = document.getElementById('stamp-seal');
+const sealCode     = document.getElementById('seal-code');
+const stageItems   = [...document.querySelectorAll('#stage-list li')];
+const sheetBar     = document.getElementById('sheet-progress');
+const sheetFill    = document.getElementById('sheet-progress-fill');
+const sheetNote    = document.getElementById('sheet-note');
 const submitBtn    = document.getElementById('submit-btn');
 const progressFill = document.getElementById('stamp-progress-fill');
+const btnLabel     = document.getElementById('btn-label');
 
-function showStamping() {
-  const label = document.getElementById('btn-label');
-  label.textContent = 'PRESSING SEAL…';
-  if (submitBtn) submitBtn.classList.add('stamping');
-  if (progressFill) progressFill.style.width = '80%';
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const MIN_VISIBLE_MS = 1300;          // avoid a flash on very fast responses
+const STAGE_LABELS = ['CHECKING…', 'SCANNING…', 'ASSIGNING…', 'STAMPING…'];
+// While waiting, advance through the first three stages; "stamp" only on response.
+const WAIT_STAGE_AT = [0, 750, 1600];
 
-  overlay.classList.add('visible');
-  seal.classList.remove('drop', 'landed');
-  sealCode.textContent = '——';
+const Dispatch = (() => {
+  let startedAt = 0, raf = 0, timers = [], stage = -1, lastFocus = null;
 
-  // Start drop animation on next frame
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      seal.classList.add('drop');
+  const setProgress = pct => {
+    sheetFill.style.width = pct + '%';
+    progressFill.style.width = pct + '%';
+  };
+
+  function setStage(i) {
+    stage = i;
+    stageItems.forEach((li, idx) => {
+      li.classList.toggle('done', idx < i);
+      li.classList.toggle('active', idx === i);
     });
-  });
+    btnLabel.textContent = STAGE_LABELS[i] || btnLabel.textContent;
+  }
 
-  // Thud effect
-  setTimeout(() => seal.classList.add('landed'), 360);
-}
+  function tick(now) {
+    const t = now - startedAt;
+    setProgress(+(90 * (1 - Math.exp(-t / 2400))).toFixed(1)); // eases, never hits 100
+    raf = requestAnimationFrame(tick);
+  }
 
-function showDispatched(shortCode) {
-  sealCode.textContent = shortCode;
-  const label = document.getElementById('btn-label');
-  label.textContent = 'STAMPED ✓';
-  if (progressFill) progressFill.style.width = '100%';
-}
+  function clearTimers() { timers.forEach(clearTimeout); timers = []; cancelAnimationFrame(raf); }
 
-function hideStamp() {
-  overlay.classList.remove('visible');
-  seal.classList.remove('drop', 'landed');
-}
+  function start() {
+    clearTimers();
+    lastFocus = document.activeElement;
+    startedAt = performance.now();
+    submitBtn.classList.add('stamping');
+    sheetBar.classList.remove('done');
+    sheetNote.textContent = '';
+    seal.classList.remove('slam');
+    sheet.classList.remove('thud');
+    sealCode.textContent = '——';
+    stageItems.forEach(li => li.classList.remove('active', 'done'));
+    setProgress(0);
+    setStage(0);
 
-function resetButton() {
-  const label = document.getElementById('btn-label');
-  label.textContent = 'DISPATCH';
-  if (submitBtn) submitBtn.classList.remove('stamping');
-  if (progressFill) progressFill.style.width = '0%';
-  document.getElementById('submit-btn').disabled = false;
-}
+    overlay.classList.add('visible');
+    overlay.setAttribute('aria-hidden', 'false');
+
+    WAIT_STAGE_AT.slice(1).forEach((at, i) => timers.push(setTimeout(() => setStage(i + 1), at)));
+    timers.push(setTimeout(() => { sheetNote.textContent = 'Still working — the server may be waking up…'; }, 3500));
+    timers.push(setTimeout(() => { sheetNote.textContent = 'Free hosting sleeps when idle; the first request can take up to ~30s. Hang tight.'; }, 9000));
+    raf = requestAnimationFrame(tick);
+  }
+
+  /** Server answered OK: finish remaining stages, slam the seal, resolve when done. */
+  async function succeed(code) {
+    clearTimers();
+    const wait = MIN_VISIBLE_MS - (performance.now() - startedAt);
+    if (wait > 0) await sleep(wait);
+    sheetNote.textContent = '';
+    setProgress(100);
+    sheetBar.classList.add('done');
+
+    for (let i = Math.max(stage, 0); i < 3; i++) { setStage(i); await sleep(170); }
+    setStage(3);                                   // "Stamping the parcel"
+    await sleep(260);
+
+    sealCode.textContent = code;
+    seal.classList.add('slam');
+    setTimeout(() => sheet.classList.add('thud'), 200);
+    stageItems.forEach(li => { li.classList.remove('active'); li.classList.add('done'); });
+    btnLabel.textContent = 'STAMPED ✓';
+    await sleep(1000);
+  }
+
+  function hide() {
+    clearTimers();
+    overlay.classList.remove('visible');
+    overlay.setAttribute('aria-hidden', 'true');
+    if (lastFocus && lastFocus.focus) lastFocus.focus({ preventScroll: true });
+    setTimeout(() => { seal.classList.remove('slam'); sheet.classList.remove('thud'); }, 300);
+  }
+
+  function reset() {
+    submitBtn.classList.remove('stamping');
+    btnLabel.textContent = 'DISPATCH';
+    progressFill.style.width = '0%';
+    submitBtn.disabled = false;
+  }
+
+  return { start, succeed, hide, reset };
+})();
 
 /* ── Dispatch form ── */
-document.getElementById('submit-btn').addEventListener('click', async () => {
-  const longUrl      = document.getElementById('longUrl').value.trim();
-  const customAlias  = document.getElementById('customAlias').value.trim();
-  const expiresInDays = document.getElementById('expiresInDays').value;
-  const errorEl      = document.getElementById('form-error');
-  const btn          = document.getElementById('submit-btn');
+function showFormError(msg) {
+  const errorEl = document.getElementById('form-error');
+  errorEl.textContent = msg;
+  errorEl.hidden = false;
+  const card = document.getElementById('shipForm');
+  card.classList.remove('shake'); void card.offsetWidth; card.classList.add('shake');
+}
 
+async function dispatchLink() {
+  const longUrl       = document.getElementById('longUrl').value.trim();
+  const customAlias   = document.getElementById('customAlias').value.trim();
+  const expiresInDays = document.getElementById('expiresInDays').value;
+  const errorEl       = document.getElementById('form-error');
+  const btn           = document.getElementById('submit-btn');
+
+  if (btn.disabled) return;
   errorEl.hidden = true;
   document.getElementById('result-card').hidden = true;
 
-  if (!longUrl) {
-    errorEl.textContent = 'Please enter a URL.';
-    errorEl.hidden = false;
-    return;
-  }
-  if (!longUrl.startsWith('http://') && !longUrl.startsWith('https://')) {
-    errorEl.textContent = 'URL must start with http:// or https://';
-    errorEl.hidden = false;
-    return;
-  }
+  if (!longUrl) return showFormError('Please enter a URL.');
+  if (!/^https?:\/\//i.test(longUrl)) return showFormError('URL must start with http:// or https://');
 
   btn.disabled = true;
-  showStamping();
+  Dispatch.start();
 
   const payload = { longUrl };
   if (customAlias) payload.customAlias = customAlias;
   if (expiresInDays) payload.expiresInDays = Number(expiresInDays);
+
+  // Give up after 60s so a dead server can't leave the overlay up forever.
+  const controller = new AbortController();
+  const abortTimer = setTimeout(() => controller.abort(), 60000);
 
   try {
     // Auth.apiFetch automatically attaches the Bearer token if logged in,
@@ -114,25 +181,20 @@ document.getElementById('submit-btn').addEventListener('click', async () => {
     const res = await Auth.apiFetch('/api/v1/urls', {
       method: 'POST',
       body: JSON.stringify(payload),
+      signal: controller.signal,
     });
 
-    if (!res) return; // Auth.apiFetch already redirected on 401
+    if (!res) { Dispatch.hide(); Dispatch.reset(); return; }   // 401 -> redirecting to login
 
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
 
     if (!res.ok) {
-      hideStamp();
-      resetButton();
-      errorEl.textContent = data.message || 'Could not dispatch that link.';
-      errorEl.hidden = false;
-      // Show DISPATCH FAILED state briefly
-      document.getElementById('btn-label').textContent = 'DISPATCH FAILED';
-      setTimeout(resetButton, 1800);
+      Dispatch.hide();
+      showFormError(data.message || 'Could not dispatch that link.');
+      btnLabel.textContent = 'DISPATCH FAILED';
+      setTimeout(Dispatch.reset, 1600);
       return;
     }
-
-    // Success path — show the code on the stamp seal, then reveal result
-    showDispatched(data.shortCode);
 
     // Save to session history regardless of login state, so anonymous users
     // always see it in /history.html, and logged-in users can also see the
@@ -149,20 +211,26 @@ document.getElementById('submit-btn').addEventListener('click', async () => {
       managementKey: data.managementKey,
     });
 
-    // Delay revealing the result card until the stamp animation lands
-    setTimeout(() => {
-      hideStamp();
-      renderResultCard(data);
-      resetButton();
-    }, 900);
+    await Dispatch.succeed(data.shortCode);   // stages complete, seal slams
+    Dispatch.hide();
+    renderResultCard(data);
+    Dispatch.reset();
 
   } catch (err) {
-    hideStamp();
-    resetButton();
-    errorEl.textContent = 'Network error — is the server running?';
-    errorEl.hidden = false;
+    Dispatch.hide();
+    showFormError(err.name === 'AbortError'
+      ? 'The server took too long to respond. Please try again.'
+      : 'Network error — could not reach the server.');
+    Dispatch.reset();
+  } finally {
+    clearTimeout(abortTimer);
   }
-});
+}
+
+document.getElementById('submit-btn').addEventListener('click', dispatchLink);
+['longUrl', 'customAlias'].forEach(id =>
+  document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') dispatchLink(); })
+);
 
 /* ── Result card ── */
 function renderResultCard(data) {
@@ -194,31 +262,16 @@ function renderResultCard(data) {
 }
 
 /* ── Copy buttons ── */
-document.getElementById('copy-btn').addEventListener('click', async () => {
-  const url = document.getElementById('result-url').href;
-  const btn = document.getElementById('copy-btn');
-  try {
-    await navigator.clipboard.writeText(url);
-    btn.textContent = '✓ Copied';
-    btn.classList.add('copied');
-    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1800);
-  } catch {
-    btn.textContent = 'Copy the URL manually';
-  }
-});
-
-document.getElementById('copy-key-btn').addEventListener('click', async () => {
-  const key = document.getElementById('result-key').textContent;
-  const btn = document.getElementById('copy-key-btn');
-  try {
-    await navigator.clipboard.writeText(key);
-    btn.textContent = '✓ Copied';
-    btn.classList.add('copied');
-    setTimeout(() => { btn.textContent = 'Copy key'; btn.classList.remove('copied'); }, 1800);
-  } catch {
-    btn.textContent = 'Copy manually';
-  }
-});
+async function copyFrom(btn, text, toastMsg) {
+  const ok = await UI.copyText(text);
+  if (!ok) { UI.toast('Could not copy — please copy it manually', { type: 'error' }); return; }
+  UI.flash(btn, btn, '✓ Copied');
+  UI.toast(toastMsg);
+}
+document.getElementById('copy-btn').addEventListener('click', e =>
+  copyFrom(e.currentTarget, UI.shortUrlForCopy(document.getElementById('result-url').href), 'Short link copied'));
+document.getElementById('copy-key-btn').addEventListener('click', e =>
+  copyFrom(e.currentTarget, document.getElementById('result-key').textContent, 'Management key copied'));
 
 /* ── Track button on the dispatched result card ── */
 document.getElementById('result-track-btn').addEventListener('click', () => {
