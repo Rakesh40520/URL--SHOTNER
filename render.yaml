@@ -1,13 +1,6 @@
 # https://render.com/docs/blueprint-spec
-# One-click deploy: connect your GitHub repo on Render's dashboard,
-# or click the "Deploy to Render" button if you add one to README.md.
-# Render auto-discovers this file and provisions everything listed below.
-
-databases:
-  - name: url-shortener-db
-    plan: free
-    databaseName: urlshortener
-    user: urlshortener
+# Configured for Neon PostgreSQL (free forever, never expires)
+# Render auto-discovers this file and provisions the web service below.
 
 services:
   - type: web
@@ -17,43 +10,31 @@ services:
     dockerfilePath: ./Dockerfile
     healthCheckPath: /actuator/health
     envVars:
-      # Activate the Postgres profile (instead of the default H2)
+      # Activate the Postgres profile
       - key: SPRING_PROFILES_ACTIVE
         value: postgres
 
-      # Database connection — pulled automatically from the managed
-      # Postgres instance above (no manual copy-paste needed)
+      # Neon PostgreSQL connection details
       - key: DB_HOST
-        fromDatabase:
-          name: url-shortener-db
-          property: host
+        value: ep-rough-sky-avr26tyd-pooler.c-11.us-east-1.aws.neon.tech
       - key: DB_PORT
-        fromDatabase:
-          name: url-shortener-db
-          property: port
+        value: "5432"
       - key: DB_NAME
-        fromDatabase:
-          name: url-shortener-db
-          property: database
+        value: neondb
       - key: DB_USER
-        fromDatabase:
-          name: url-shortener-db
-          property: user
+        value: neondb_owner
+      # Securely managed in Render — sync: false ensures your password
+      # is NEVER committed to your public GitHub repository!
       - key: DB_PASSWORD
-        fromDatabase:
-          name: url-shortener-db
-          property: password
-
-      # Render assigns a random port; Spring Boot reads it via ${PORT:8080}
-      # (already configured in application.yml). Render sets PORT automatically,
-      # so no explicit key is needed here.
+        sync: false
+      - key: DB_SSLMODE
+        value: "?sslmode=require"
 
       # Auto-generate a strong JWT secret (Render creates a random value
       # on first deploy and keeps it stable across redeploys)
       - key: JWT_SECRET
         generateValue: true
 
-      # Disable the H2 database console in production (only needed for
-      # local dev — it's an unnecessary attack surface on a public server)
+      # Disable the H2 database console in production
       - key: H2_CONSOLE_ENABLED
         value: "false"
