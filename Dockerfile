@@ -10,5 +10,6 @@ RUN mvn -B clean package -DskipTests
 FROM eclipse-temurin:17-jre-jammy
 WORKDIR /app
 COPY --from=build /app/target/url-shortener.jar app.jar
-EXPOSE 8080
+ENV PORT=10000
+EXPOSE 10000
 ENTRYPOINT ["java", "-XX:+UseContainerSupport", "-Xmx384m", "-jar", "app.jar"]
