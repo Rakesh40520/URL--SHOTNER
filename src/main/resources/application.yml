@@ -7,16 +7,15 @@ spring:
     name: url-shortener
 
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://${DB_HOST:ep-rough-sky-avr26tyd-pooler.c-11.us-east-1.aws.neon.tech}:${DB_PORT:5432}/${DB_NAME:neondb}?sslmode=require}
+    url: jdbc:postgresql://ep-rough-sky-avr26tyd-pooler.c-11.us-east-1.aws.neon.tech:5432/neondb?sslmode=require
     driver-class-name: org.postgresql.Driver
-    username: ${DB_USER:neondb_owner}
-    password: ${DB_PASSWORD:npg_2qEjVrAIJkm0}
+    username: neondb_owner
+    password: npg_2qEjVrAIJkm0
 
   jpa:
     hibernate:
       ddl-auto: update
     show-sql: false
-    database-platform: org.hibernate.dialect.PostgreSQLDialect
     properties:
       hibernate:
         format_sql: true
