@@ -228,16 +228,37 @@ document.getElementById('result-track-btn').addEventListener('click', () => {
   document.getElementById('track-btn').click();
 });
 
+/* ── Short code extractor helper ── */
+function extractShortCode(input) {
+  if (!input) return '';
+  input = input.trim();
+  try {
+    if (input.includes('/') || input.startsWith('http://') || input.startsWith('https://')) {
+      const url = new URL(input.startsWith('http') ? input : 'https://' + input);
+      const segments = url.pathname.split('/').filter(Boolean);
+      if (segments.length > 0) {
+        return segments[segments.length - 1];
+      }
+    }
+  } catch {}
+  return input.replace(/^[/#]+|[/#]+$/g, '').split(/[?#]/)[0].trim();
+}
+
 /* ── Track / stats ── */
 document.getElementById('track-btn').addEventListener('click', async () => {
-  const code    = document.getElementById('trackCode').value.trim();
+  const rawCode = document.getElementById('trackCode').value;
+  const code    = extractShortCode(rawCode);
   const key     = document.getElementById('trackKey').value.trim();
   const errorEl = document.getElementById('track-error');
   const result  = document.getElementById('track-result');
 
   errorEl.hidden = true;
   result.hidden  = true;
-  if (!code) return;
+  if (!code) {
+    errorEl.textContent = 'Please enter a short code or paste a link.';
+    errorEl.hidden = false;
+    return;
+  }
 
   try {
     // Auth.apiFetch attaches the JWT if logged in, so an owner can view
@@ -289,14 +310,19 @@ document.getElementById('track-btn').addEventListener('click', async () => {
 // short link flag it even though they have no account for it. Rate-limited
 // server-side per IP (see RateLimitFilter/app.report-rate-limit).
 document.getElementById('report-btn').addEventListener('click', async () => {
-  const code    = document.getElementById('reportCode').value.trim();
+  const rawCode = document.getElementById('reportCode').value;
+  const code    = extractShortCode(rawCode);
   const reason  = document.getElementById('reportReason').value.trim();
   const errorEl = document.getElementById('report-error');
   const okEl    = document.getElementById('report-success');
 
   errorEl.hidden = true;
   okEl.hidden = true;
-  if (!code) return;
+  if (!code) {
+    errorEl.textContent = 'Please enter a short code or paste the link you wish to report.';
+    errorEl.hidden = false;
+    return;
+  }
 
   const btn = document.getElementById('report-btn');
   btn.disabled = true;
@@ -320,8 +346,8 @@ document.getElementById('report-btn').addEventListener('click', async () => {
     }
 
     okEl.textContent = data.autoFlagged
-      ? 'Reported. This link has now been flagged and disabled pending review.'
-      : 'Reported - thank you for flagging this.';
+      ? 'Reported & Verified: Threat or abuse detected. This link has been immediately flagged and disabled from resolving.'
+      : `Reported (Recorded ${data.reportCount} report${data.reportCount > 1 ? 's' : ''}). Thank you for keeping links safe.`;
     okEl.hidden = false;
     document.getElementById('reportCode').value = '';
     document.getElementById('reportReason').value = '';

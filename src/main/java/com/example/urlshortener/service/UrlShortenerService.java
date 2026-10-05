@@ -614,7 +614,19 @@ public class UrlShortenerService {
             mapping.setReportCount(mapping.getReportCount() + 1);
 
             boolean autoFlagged = false;
-            if (mapping.getStatus() == UrlStatus.ACTIVE && mapping.getReportCount() >= reportAutoDisableThreshold) {
+
+            // Trigger malicious threat check on report if Safe Browsing is configured
+            if (safeBrowsingClient != null && safeBrowsingClient.isEnabled()) {
+                SafeBrowsingResult result = safeBrowsingClient.check(mapping.getLongUrl());
+                if (result.getStatus() == SafeBrowsingResult.Status.MATCH) {
+                    mapping.setStatus(UrlStatus.BLOCKED_MALICIOUS);
+                    mapping.setStatusReason("Blocked: threat detected by Safe Browsing (" + result.getThreatType() + ")");
+                    autoFlagged = true;
+                    evictFromCache(shortCode);
+                }
+            }
+
+            if (!autoFlagged && mapping.getStatus() == UrlStatus.ACTIVE && mapping.getReportCount() >= reportAutoDisableThreshold) {
                 mapping.setStatus(UrlStatus.FLAGGED);
                 mapping.setStatusReason("Auto-flagged after " + mapping.getReportCount() + " abuse reports");
                 autoFlagged = true;

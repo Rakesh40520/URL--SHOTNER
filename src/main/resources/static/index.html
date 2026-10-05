@@ -121,8 +121,8 @@
     <h2>Track a parcel</h2>
     <p class="section-sub">View click counts and status for a link you created — requires its management key.</p>
     <div class="track-form-row">
-      <input type="text" id="trackCode" placeholder="Short code, e.g. 1a2B3c" maxlength="20"/>
-      <input type="text" id="trackKey" placeholder="Management key" maxlength="24"/>
+      <input type="text" id="trackCode" placeholder="Short code or paste link, e.g. cpt0yec or https://..." maxlength="300"/>
+      <input type="text" id="trackKey" placeholder="Management key" maxlength="50"/>
       <button type="button" id="track-btn">Track</button>
     </div>
     <div class="track-result" id="track-result" hidden>
@@ -143,9 +143,9 @@
   <!-- Report abuse section -->
   <section class="tracking-card" id="report-section">
     <h2>Report a link</h2>
-    <p class="section-sub">Flag a short link that looks malicious, spammy, or abusive. No account needed.</p>
+    <p class="section-sub">Flag a short link that looks malicious, spammy, or abusive. Paste the full URL or code. No account needed.</p>
     <div class="track-form-row">
-      <input type="text" id="reportCode" placeholder="Short code, e.g. 1a2B3c" maxlength="20"/>
+      <input type="text" id="reportCode" placeholder="Short code or paste link, e.g. cpt0yec or https://..." maxlength="300"/>
       <input type="text" id="reportReason" placeholder="Reason (optional)" maxlength="500"/>
       <button type="button" id="report-btn">Report</button>
     </div>
