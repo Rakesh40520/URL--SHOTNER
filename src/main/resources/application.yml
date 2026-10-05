@@ -169,6 +169,13 @@ management:
   endpoint:
     health:
       show-details: when-authorized
+      probes:
+        enabled: true
+  health:
+    redis:
+      enabled: ${app.redis.enabled:false}
+    kafka:
+      enabled: ${app.kafka.enabled:false}
 
 # Circuit breaker around the Safe Browsing call - see
 # safebrowsing/SafeBrowsingClient's class doc for why. Numbers are
