@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>My Dispatches — Dispatch</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Special+Elite&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/nav.css"/>
+<link rel="stylesheet" href="css/dashboard.css"/>
+<style>
+  .dash-pager { display: flex; align-items: center; justify-content: center; gap: 16px; margin-top: 16px; }
+  .dash-pager[hidden] { display: none; }
+  .pager-status { font-family: var(--font-mono, monospace); font-size: .85rem; opacity: .75; }
+  .dash-pager .action-btn:disabled { opacity: .4; cursor: not-allowed; }
+</style>
+</head>
+<body>
+
+<div id="site-nav"></div>
+
+<main class="dash-page wrap">
+
+  <div class="dash-header">
+    <p class="dash-eyebrow">Authenticated history</p>
+    <h1 class="dash-title">My Dispatches</h1>
+    <p class="dash-sub">Your permanent URL history — only visible to you.</p>
+  </div>
+
+  <div class="dash-stats">
+    <div class="stat-card"><p class="stat-label">Total Links</p><p class="stat-value" id="stat-total">—</p></div>
+    <div class="stat-card"><p class="stat-label">Active</p><p class="stat-value" id="stat-active">—</p></div>
+    <div class="stat-card"><p class="stat-label">Expired</p><p class="stat-value" id="stat-expired">—</p></div>
+    <div class="stat-card"><p class="stat-label">Blocked</p><p class="stat-value" id="stat-blocked">—</p></div>
+    <div class="stat-card"><p class="stat-label">Total Clicks</p><p class="stat-value" id="stat-clicks">—</p></div>
+  </div>
+
+  <div class="dash-table-wrap" id="table-wrap">
+    <table class="dash-table">
+      <thead>
+        <tr>
+          <th>Original URL</th>
+          <th>Short Code</th>
+          <th>Created</th>
+          <th>Clicks</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="url-tbody">
+        <!-- skeleton rows while loading -->
+        <tr class="loading-row"><td colspan="6"></td></tr>
+        <tr class="loading-row"><td colspan="6"></td></tr>
+        <tr class="loading-row"><td colspan="6"></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="dash-pager" id="pager" hidden>
+    <button class="action-btn" id="pager-prev" type="button">&larr; Prev</button>
+    <span id="pager-status" class="pager-status"></span>
+    <button class="action-btn" id="pager-next" type="button">Next &rarr;</button>
+  </div>
+
+</main>
+
+<script src="js/auth.js"></script>
+<script src="js/nav.js"></script>
+<script>
+  // Guard: redirect to login if not authenticated
+  Auth.requireAuth();
+  Nav.render();
+
+  const tbody  = document.getElementById('url-tbody');
+  const PAGE_SIZE = 20;
+  let allUrls    = []; // current page's rows only (used by delete handler below)
+  let currentPage = 0; // zero-indexed, matches Spring Data's Pageable
+
+  function fmt(iso) {
+    if (!iso) return '—';
+    return new Date(iso).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
+  }
+
+  function esc(str) {
+    return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function badgeClass(status) {
+    switch (status) {
+      case 'Active':   return 'active';
+      case 'Expired':  return 'expired';
+      case 'Flagged':  return 'flagged';
+      case 'Disabled': return 'disabled';
+      default:         return 'expired';
+    }
+  }
+
+  // Loads one page of links plus the aggregate summary counts. These are
+  // two separate requests: /my/summary computes totals in the database
+  // (COUNT/SUM), so the summary cards stay accurate even for a user with
+  // far more links than fit on one page - unlike summing the current
+  // page's rows in JS, which would only reflect what's currently visible.
+  async function loadUrls(page = 0) {
+    const [listRes, summaryRes] = await Promise.all([
+      Auth.apiFetch(`/api/v1/urls/my?page=${page}&size=${PAGE_SIZE}`),
+      Auth.apiFetch('/api/v1/urls/my/summary'),
+    ]);
+    if (!listRes || !summaryRes) return; // auth.js already redirected to login
+
+    const pageData = await listRes.json();
+
+    if (!listRes.ok) {
+      tbody.innerHTML = `<tr><td colspan="6" style="padding:24px;color:var(--danger);font-family:var(--font-mono);font-size:.85rem">${esc(pageData.message || 'Failed to load.')}</td></tr>`;
+      return;
+    }
+
+    currentPage = page;
+    allUrls = pageData.content;
+
+    // If deleting the last row on a page (or otherwise landing past the
+    // new last page) leaves this page empty while an earlier one exists,
+    // step back a page rather than showing a blank table.
+    if (allUrls.length === 0 && page > 0 && pageData.totalPages > 0) {
+      await loadUrls(page - 1);
+      return;
+    }
+
+    if (summaryRes.ok) renderStats(await summaryRes.json());
+    renderTable(allUrls);
+    renderPager(pageData);
+  }
+
+  function renderStats(summary) {
+    document.getElementById('stat-total').textContent   = summary.total;
+    document.getElementById('stat-active').textContent  = summary.active;
+    document.getElementById('stat-expired').textContent = summary.expired;
+    document.getElementById('stat-blocked').textContent = summary.blocked;
+    document.getElementById('stat-clicks').textContent  = summary.totalClicks;
+  }
+
+  function renderPager(pageData) {
+    const pager = document.getElementById('pager');
+    if (pageData.totalPages <= 1) {
+      pager.hidden = true;
+      return;
+    }
+    pager.hidden = false;
+    document.getElementById('pager-status').textContent =
+      `Page ${pageData.number + 1} of ${pageData.totalPages}`;
+    document.getElementById('pager-prev').disabled = pageData.first;
+    document.getElementById('pager-next').disabled = pageData.last;
+  }
+
+  document.getElementById('pager-prev').addEventListener('click', () => {
+    if (currentPage > 0) loadUrls(currentPage - 1);
+  });
+  document.getElementById('pager-next').addEventListener('click', () => {
+    loadUrls(currentPage + 1);
+  });
+
+  function renderTable(urls) {
+    if (urls.length === 0) {
+      document.getElementById('table-wrap').innerHTML = `
+        <div class="dash-empty">
+          <div class="dash-empty-icon">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          </div>
+          <h3>No dispatches yet</h3>
+          <p>Create your first short URL and it will appear here permanently.</p>
+          <a href="/index.html">Create Short URL</a>
+        </div>`;
+      return;
+    }
+
+    tbody.innerHTML = urls.map(u => `
+      <tr data-code="${esc(u.shortCode)}">
+        <td class="td-url" title="${esc(u.longUrl)}">${esc(u.longUrl)}</td>
+        <td class="td-short"><a href="${esc(u.shortUrl)}" target="_blank" rel="noopener">${esc(u.shortCode)}</a></td>
+        <td>${fmt(u.createdAt)}</td>
+        <td class="td-clicks">${u.clickCount}</td>
+        <td>
+          <span class="badge badge-${badgeClass(u.status)}" title="${esc(u.statusReason || '')}">${esc(u.status)}</span>
+        </td>
+        <td class="td-actions">
+          <button class="action-btn copy-btn" data-url="${esc(u.shortUrl)}" title="Copy short URL">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            Copy
+          </button>
+          <a class="action-btn" href="${esc(u.shortUrl)}" target="_blank" rel="noopener" title="Open short URL">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            Open
+          </a>
+          ${u.status === 'Disabled' || u.status === 'Flagged'
+            ? `<button class="action-btn enable-btn" data-code="${esc(u.shortCode)}" title="Re-enable this link">
+                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                 Enable
+               </button>`
+            : `<button class="action-btn disable-btn" data-code="${esc(u.shortCode)}" title="Disable this link (stops it from resolving)">
+                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="4.9" y1="4.9" x2="19.1" y2="19.1"/></svg>
+                 Disable
+               </button>`}
+          <button class="action-btn del delete-btn" data-code="${esc(u.shortCode)}" title="Delete URL">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+            Delete
+          </button>
+        </td>
+      </tr>
+    `).join('');
+
+    // Enable/disable buttons
+    tbody.querySelectorAll('.disable-btn, .enable-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const action = btn.classList.contains('enable-btn') ? 'enable' : 'disable';
+        if (action === 'disable' && !confirm(`Disable short code "${btn.dataset.code}"? It will stop redirecting until you re-enable it.`)) return;
+        btn.disabled = true;
+        const res = await Auth.apiFetch(`/api/v1/urls/${encodeURIComponent(btn.dataset.code)}/${action}`, { method: 'POST' });
+        if (res && res.ok) {
+          loadUrls(currentPage);
+        } else {
+          btn.disabled = false;
+          alert(`Could not ${action} this link — please try again.`);
+        }
+      });
+    });
+
+    // Copy buttons
+    tbody.querySelectorAll('.copy-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(btn.dataset.url);
+          btn.textContent = '✓ Copied';
+          btn.classList.add('copied');
+          setTimeout(() => { btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy`; btn.classList.remove('copied'); }, 1800);
+        } catch { /* fallback: select text */ }
+      });
+    });
+
+    // Delete buttons
+    tbody.querySelectorAll('.delete-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!confirm(`Delete short code "${btn.dataset.code}"? This cannot be undone.`)) return;
+        btn.disabled = true;
+        btn.textContent = '…';
+        const res = await Auth.apiFetch(`/api/v1/urls/${encodeURIComponent(btn.dataset.code)}`, { method: 'DELETE' });
+        if (res && res.ok) {
+          // Re-fetch this page and the summary rather than patching the
+          // in-memory array - deleting the last row on a page should pull
+          // in the next page's row (or drop back a page if this was the
+          // only row left), which a purely local splice can't do.
+          loadUrls(currentPage);
+        } else {
+          btn.disabled = false;
+          btn.textContent = 'Delete';
+          alert('Could not delete — please try again.');
+        }
+      });
+    });
+  }
+
+  loadUrls();
+</script>
+</body>
+</html>

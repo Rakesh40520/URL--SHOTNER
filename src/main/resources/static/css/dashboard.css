@@ -1,0 +1,219 @@
+/* dashboard.css — MY DISPATCHES page */
+
+body { background: var(--kraft); }
+
+.dash-page { padding: 40px 0 80px; }
+
+.dash-header { margin-bottom: 32px; }
+.dash-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--stamp-red);
+  margin: 0 0 6px;
+}
+.dash-title {
+  font-family: var(--font-display);
+  font-size: 2rem;
+  margin: 0 0 4px;
+}
+.dash-sub { color: var(--ink-soft); font-size: 0.92rem; margin: 0; }
+
+/* ── Summary cards ── */
+.dash-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 32px;
+}
+.stat-card {
+  background: var(--paper);
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+}
+.stat-label {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ink-soft);
+  margin: 0 0 4px;
+}
+.stat-value {
+  font-family: var(--font-display);
+  font-size: 1.8rem;
+  color: var(--ink);
+  margin: 0;
+}
+
+/* ── URL table ── */
+.dash-table-wrap {
+  background: var(--paper);
+  border: 1.5px solid var(--ink);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: 4px 4px 0 rgba(33,29,24,0.07);
+}
+
+.dash-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+.dash-table th {
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ink-soft);
+  padding: 12px 16px;
+  border-bottom: 1.5px solid var(--line);
+  background: var(--kraft);
+  white-space: nowrap;
+}
+.dash-table td {
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+  color: var(--ink);
+}
+.dash-table tr:last-child td { border-bottom: none; }
+.dash-table tr:hover td { background: rgba(230,218,184,0.3); }
+
+.td-url {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+.td-short a {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 0.85rem;
+  text-decoration: none;
+  color: var(--teal);
+}
+.td-short a:hover { text-decoration: underline; }
+
+.td-clicks {
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+.td-key { max-width: 180px; }
+.key-code {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--ink);
+  background: var(--kraft);
+  border: 1px dashed var(--line);
+  border-radius: 2px;
+  padding: 3px 7px;
+  cursor: pointer;
+  word-break: break-all;
+  transition: border-color 0.12s, color 0.12s;
+}
+.key-code:hover { border-color: var(--teal); color: var(--teal); }
+.key-code.copied { border-color: var(--teal); color: var(--teal); border-style: solid; }
+.td-key-missing { color: var(--ink-soft); font-family: var(--font-mono); font-size: 0.8rem; }
+
+.badge {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.05em;
+  padding: 3px 8px;
+  border-radius: 2px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.badge-active  { background: #d4edda; color: #1e6335; }
+.badge-expired { background: #fde8e8; color: #8b1a1a; }
+.badge-flagged { background: #fff3cd; color: #7a5b00; }
+.badge-disabled { background: #e2e3e5; color: #383d41; }
+
+.td-actions { white-space: nowrap; }
+.action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  padding: 5px 9px;
+  border-radius: 2px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink-soft);
+  text-decoration: none;
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s;
+  margin-right: 4px;
+}
+.action-btn:hover { border-color: var(--ink); color: var(--ink); }
+.action-btn.del:hover { border-color: var(--danger); color: var(--danger); }
+.action-btn.copied { border-color: var(--teal); color: var(--teal); }
+
+/* ── Empty state ── */
+.dash-empty {
+  text-align: center;
+  padding: 60px 24px;
+}
+.dash-empty-icon {
+  color: var(--line);
+  margin-bottom: 16px;
+}
+.dash-empty h3 {
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  margin: 0 0 8px;
+}
+.dash-empty p { color: var(--ink-soft); margin: 0 0 24px; }
+.dash-empty a {
+  display: inline-block;
+  font-family: var(--font-display);
+  letter-spacing: 0.08em;
+  font-size: 0.95rem;
+  padding: 11px 24px;
+  background: var(--stamp-red);
+  color: var(--paper);
+  border: 2px solid var(--ink);
+  border-radius: var(--radius);
+  text-decoration: none;
+}
+.dash-empty a:hover { opacity: 0.88; }
+
+/* ── Loading skeleton ── */
+.loading-row td { background: linear-gradient(90deg, var(--paper) 25%, var(--kraft) 50%, var(--paper) 75%);
+  background-size: 200% 100%; animation: shimmer 1.2s infinite; height: 44px; }
+@keyframes shimmer { to { background-position: -200% 0; } }
+
+@media (max-width: 720px) {
+  .dash-stats { grid-template-columns: repeat(2, 1fr); }
+
+  /* dashboard.html table: Original URL | Short Code | Created | Clicks | Status | Actions
+     Hide Created + Clicks on small screens, keep everything else. */
+  .dash-table:not(.history-table) th:nth-child(3),
+  .dash-table:not(.history-table) td:nth-child(3),
+  .dash-table:not(.history-table) th:nth-child(4),
+  .dash-table:not(.history-table) td:nth-child(4) { display: none; }
+
+  /* history.html table: Original URL | Short URL | Key | Created | Expires | Status | Actions
+     Hide Created + Expires instead - the Key column is the whole point of
+     this page's "make it visible" fix, so it must NOT be hidden on mobile. */
+  .history-table th:nth-child(4),
+  .history-table td:nth-child(4),
+  .history-table th:nth-child(5),
+  .history-table td:nth-child(5) { display: none; }
+}
+@media (max-width: 500px) {
+  .dash-stats { grid-template-columns: 1fr 1fr; }
+  .dash-title { font-size: 1.5rem; }
+}

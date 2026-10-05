@@ -1,0 +1,65 @@
+version: "3.8"
+
+# Primary + read-replica Postgres, for the app's `postgres-ha` profile (see
+# application.yml and config/datasource/DataSourceConfig.java).
+#
+# Run alongside the app with:
+#   docker compose -f docker-compose.replica.yml up -d
+#   mvn spring-boot:run -Dspring-boot.run.profiles=postgres-ha
+#
+# Uses bitnami/postgresql images because they support real streaming
+# replication purely through environment variables
+# (POSTGRESQL_REPLICATION_MODE) - no custom entrypoint scripting needed to
+# stand this up locally.
+#
+# Replication here is asynchronous (bitnami's default) - the same
+# trade-off any real read-replica setup makes: a write can be momentarily
+# invisible on the replica immediately after it commits on the primary.
+# That's exactly why writes (shorten, disable, report, the click counter in
+# resolve()) are routed to the primary and only @Transactional(readOnly =
+# true) methods (getStats, getClicks, getMyUrls, login, ...) go to the
+# replica - nothing here ever needs to read its own immediately-preceding
+# write.
+services:
+  postgres-primary:
+    image: bitnami/postgresql:16
+    environment:
+      - POSTGRESQL_REPLICATION_MODE=master
+      - POSTGRESQL_REPLICATION_USER=replicator
+      - POSTGRESQL_REPLICATION_PASSWORD=replicator_password
+      - POSTGRESQL_USERNAME=postgres
+      - POSTGRESQL_PASSWORD=postgres
+      - POSTGRESQL_DATABASE=urlshortener
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg-primary-data:/bitnami/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  postgres-replica:
+    image: bitnami/postgresql:16
+    environment:
+      - POSTGRESQL_REPLICATION_MODE=slave
+      - POSTGRESQL_REPLICATION_USER=replicator
+      - POSTGRESQL_REPLICATION_PASSWORD=replicator_password
+      - POSTGRESQL_MASTER_HOST=postgres-primary
+      - POSTGRESQL_MASTER_PORT_NUMBER=5432
+      - POSTGRESQL_PASSWORD=postgres
+    ports:
+      # Host port 5433 -> container's 5432, so this can run next to
+      # postgres-primary (on host 5432) without clashing. Matches
+      # app.datasource.replica.url in application.yml's postgres-ha block.
+      - "5433:5432"
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+    volumes:
+      - pg-replica-data:/bitnami/postgresql
+
+volumes:
+  pg-primary-data:
+  pg-replica-data:

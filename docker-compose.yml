@@ -1,0 +1,81 @@
+version: "3.8"
+
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=postgres
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://db:5432/urlshortener
+      - SPRING_DATASOURCE_USERNAME=postgres
+      - SPRING_DATASOURCE_PASSWORD=postgres
+      # Redis is off by default (see application.yml's app.redis.enabled) -
+      # uncomment these two, plus the `depends_on: redis` line below, to
+      # switch rate limiting + the redirect cache over to the shared redis
+      # service defined here instead of each running per-instance.
+      # - APP_REDIS_ENABLED=true
+      # - REDIS_HOST=redis
+      # Kafka is off by default too (app.kafka.enabled) - uncomment to make
+      # click tracking async instead of writing synchronously on redirect.
+      # - APP_KAFKA_ENABLED=true
+      # - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+    depends_on:
+      db:
+        condition: service_healthy
+      # redis:
+      #   condition: service_healthy
+      # kafka:
+      #   condition: service_healthy
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=urlshortener
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    # Removed public 'ports' mapping to keep the database internal
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d urlshortener"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Shared rate-limit counters + redirect cache across every `app` instance
+  # (see ratelimit/RedisRateLimitConfig and config/CacheConfig). Not used
+  # unless app.redis.enabled=true - see the commented-out env vars above.
+  redis:
+    image: redis:7-alpine
+    # Removed public 'ports' mapping, same reasoning as `db` - internal only.
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Single-broker Kafka in KRaft mode (no separate Zookeeper container
+  # needed). Only used when app.kafka.enabled=true - see kafka/ in
+  # src/main/java and the commented-out env vars on `app` above.
+  kafka:
+    image: bitnami/kafka:3.7
+    environment:
+      - KAFKA_CFG_NODE_ID=0
+      - KAFKA_CFG_PROCESS_ROLES=controller,broker
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=0@kafka:9093
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+    volumes:
+      - kafka-data:/bitnami/kafka
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions.sh --bootstrap-server localhost:9092"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+volumes:
+  db-data:
+  kafka-data:

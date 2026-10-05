@@ -1,0 +1,49 @@
+version: "3.8"
+
+# Two independent Postgres instances for the app's `postgres-sharded`
+# profile (see sharding/ShardResolver and
+# config/datasource/ShardDataSourceConfig). Each is a completely separate
+# database with its own schema - there's no replication or coordination
+# between them, unlike docker-compose.replica.yml's primary/replica pair.
+# Which one a given short code's row lives in is decided entirely in
+# application code (Math.floorMod(shortCode.hashCode(), 2)).
+#
+# Run alongside the app with:
+#   docker compose -f docker-compose.shards.yml up -d
+#   mvn spring-boot:run -Dspring-boot.run.profiles=postgres-sharded
+services:
+  postgres-shard0:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=urlshortener
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    ports:
+      - "5434:5432"
+    volumes:
+      - pg-shard0-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d urlshortener"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  postgres-shard1:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=urlshortener
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    ports:
+      - "5435:5432"
+    volumes:
+      - pg-shard1-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d urlshortener"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pg-shard0-data:
+  pg-shard1-data:

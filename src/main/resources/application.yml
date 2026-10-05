@@ -1,0 +1,283 @@
+server:
+  port: ${PORT:8080}
+  forward-headers-strategy: framework
+
+spring:
+  application:
+    name: url-shortener
+
+  datasource:
+    url: jdbc:h2:file:./data/urlshortenerdb;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+    open-in-view: false
+
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+  # Only actually connected to when app.redis.enabled=true (see
+  # RedisRateLimitConfig / CacheConfig) - otherwise Spring Data Redis just
+  # builds a connection factory that's never touched, so this is harmless
+  # to leave in place even without Redis running.
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+  # Only relevant when app.kafka.enabled=true (see kafka/ClickEventPublisher
+  # /ClickEventConsumer) - otherwise nothing in this app ever opens a
+  # connection using these.
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    consumer:
+      group-id: url-shortener-click-consumer
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: com.example.urlshortener.kafka
+        spring.json.value.default.type: com.example.urlshortener.kafka.ClickEventMessage
+
+app:
+  # Only set this to true when this app is deployed behind a reverse
+  # proxy/load balancer that you've verified strips any client-supplied
+  # X-Forwarded-For before setting its own. Leaving it false (the default)
+  # means ClientIpResolver always uses the raw socket address, which is
+  # what keeps the rate limiter below from being trivially bypassed by a
+  # caller sending a different fake X-Forwarded-For on every request.
+  trust-proxy-headers: false
+
+  # Comma-separated list of allowed frontend origins for CORS. Defaults to
+  # "*" (any origin) for local dev / demo use - lock this down to your
+  # real frontend's origin(s) before any production deployment, e.g.:
+  # cors:
+  #   allowed-origins: https://your-app.example.com
+  cors:
+    allowed-origins: "*"
+
+  rate-limit:
+    max-requests: 20   # per client IP, for POST /api/v1/urls
+    window-seconds: 60 # per this many seconds
+
+  auth-rate-limit:
+    max-requests: 10   # per client IP, for POST /api/v1/auth/{login,register}
+    window-seconds: 60 # per this many seconds
+
+  report-rate-limit:
+    max-requests: 5    # per client IP, for POST /api/v1/urls/{shortCode}/report
+    window-seconds: 60 # per this many seconds
+
+  # Google Safe Browsing (v4 threatMatches:find) integration. Off by
+  # default - a URL shortener is a meaningful abuse target (spam, phishing,
+  # malware distribution via a trusted-looking short link), so turn this on
+  # before any real deployment. Get a free API key at
+  # https://developers.google.com/safe-browsing/v4/get-started
+  safe-browsing:
+    enabled: false
+    api-key: ${SAFE_BROWSING_API_KEY:}
+    # Identifies this app to Google's API - any stable string is fine.
+    client-id: dispatch-url-shortener
+    # true: if the API call fails/times out (or the feature is disabled),
+    # shortening/re-checking proceeds as if the URL were safe - an outage
+    # in a third-party API shouldn't take link creation down with it. An
+    # actual UNSAFE match always blocks regardless of this setting; this
+    # only governs the "we couldn't get an answer" case. Set to false for
+    # a stricter posture where an unreachable Safe Browsing API blocks
+    # link creation entirely.
+    fail-open: true
+    connect-timeout-ms: 2000
+    read-timeout-ms: 3000
+    # How often the scheduled job re-checks every currently-ACTIVE link's
+    # destination (a link safe at creation can turn malicious later).
+    # Default: 6 hours.
+    recheck-interval-ms: 21600000
+
+  report:
+    # A short code's status flips ACTIVE -> FLAGGED once its report count
+    # (via POST /api/v1/urls/{shortCode}/report) reaches this. A signal,
+    # not proof - see UrlShortenerService.report - so this is deliberately
+    # low but always recoverable by the owner re-enabling the link.
+    auto-disable-threshold: 3
+
+  # Off by default: everything works with plain in-memory rate limiting +
+  # caching, zero extra setup (InMemoryRateLimiter / CacheConfig's
+  # ConcurrentMapCacheManager). Flip to true - with a real Redis reachable
+  # at spring.data.redis.host/port below - to switch both the rate limiter
+  # (RedisRateLimitConfig) and the redirect cache (CacheConfig) over to
+  # Redis-backed implementations shared across every instance of this app.
+  # See docker-compose.yml's `redis` service.
+  redis:
+    enabled: false
+
+  # Off by default. When true, click tracking on every redirect becomes
+  # async - UrlShortenerService.recordClick publishes to Kafka and returns
+  # immediately instead of writing synchronously; kafka/ClickEventConsumer
+  # does the actual DB write on its own thread. See spring.kafka above for
+  # broker connection details.
+  kafka:
+    enabled: false
+
+  cache:
+    # How long a cached short-code -> long-URL mapping can live in Redis
+    # before it's force-evicted regardless of explicit invalidation - a
+    # backstop, not the primary invalidation mechanism (disable/report/
+    # delete all evict explicitly the moment they happen; see
+    # UrlShortenerService.evictFromCache).
+    short-url-ttl-seconds: 600
+
+# HS256 needs a secret at least 32 bytes long, or jjwt throws a
+# WeakKeyException at startup. The default below is fine for local dev -
+# override it with the JWT_SECRET env var for anything real, since anyone
+# who reads this file could otherwise forge tokens.
+jwt:
+  secret: ${JWT_SECRET:this-is-a-local-dev-only-secret-replace-it-before-deploying-1234}
+  expiration-ms: 86400000 # 24 hours
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+logging:
+  level:
+    com.example.urlshortener: INFO
+
+# Observability: exposes /actuator/health, /actuator/metrics, and
+# /actuator/prometheus (scrapeable by a real Prometheus instance, or just
+# curl-able directly). health/metrics/prometheus/circuitbreakers only -
+# not the full actuator surface (env, beans, etc. stay off by default,
+# since those can leak config/secrets if this ever ends up reachable from
+# outside).
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, metrics, prometheus, circuitbreakers
+  endpoint:
+    health:
+      show-details: when-authorized
+
+# Circuit breaker around the Safe Browsing call - see
+# safebrowsing/SafeBrowsingClient's class doc for why. Numbers are
+# deliberately small/fast for a demo (10-call window, half-open trial after
+# 30s) rather than production-scale traffic; the shape of the config is
+# the part worth understanding, not these exact figures.
+resilience4j:
+  circuitbreaker:
+    instances:
+      safeBrowsing:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        # Don't judge the failure rate off just 1-2 calls - wait for a
+        # meaningful sample before the breaker can trip at all.
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+
+---
+# Run with: java -jar url-shortener.jar --spring.profiles.active=postgres
+# Works locally (defaults to localhost/postgres) AND on Render/Railway/etc.
+# (which set DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD via their
+# managed-database addons).
+spring:
+  config:
+    activate:
+      on-profile: postgres
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:urlshortener}
+    driver-class-name: org.postgresql.Driver
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:postgres}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+
+---
+# Primary + read-replica Postgres. Pair with `docker-compose.replica.yml`
+# (bitnami/postgresql images with built-in streaming replication):
+#   docker compose -f docker-compose.replica.yml up -d
+#   java -jar url-shortener.jar --spring.profiles.active=postgres-ha
+#
+# All the actual routing logic lives in code, not here - see
+# config/datasource/{DataSourceConfig,ReplicationRoutingDataSource}.java.
+# This block only supplies the two sets of connection details they bind to.
+#
+# Note this profile does NOT set the top-level `spring.datasource.*` keys
+# above - DataSourceConfig defines its own DataSource beans directly from
+# app.datasource.primary/replica below, which makes Spring Boot's normal
+# auto-configured single DataSource back off entirely (it only activates
+# when no other DataSource bean exists).
+spring:
+  config:
+    activate:
+      on-profile: postgres-ha
+  jpa:
+    hibernate:
+      ddl-auto: update
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+
+app:
+  datasource:
+    primary:
+      url: jdbc:postgresql://localhost:5432/urlshortener
+      username: postgres
+      password: postgres
+      driver-class-name: org.postgresql.Driver
+    replica:
+      # Port 5433 on the host, per docker-compose.replica.yml - the replica
+      # container's internal 5432 is mapped there so both can run locally
+      # at once without a port clash with the primary.
+      url: jdbc:postgresql://localhost:5433/urlshortener
+      username: postgres
+      password: postgres
+      driver-class-name: org.postgresql.Driver
+
+---
+# Two fixed Postgres shards (see sharding/ShardResolver,
+# config/datasource/ShardDataSourceConfig). Pair with docker-compose.shards.yml:
+#   docker compose -f docker-compose.shards.yml up -d
+#   java -jar url-shortener.jar --spring.profiles.active=postgres-sharded
+#
+# Same reasoning as postgres-ha for not setting the top-level
+# spring.datasource.* keys here - ShardDataSourceConfig supplies its own
+# DataSource beans directly, so Spring Boot's normal auto-configured single
+# DataSource backs off entirely.
+spring:
+  config:
+    activate:
+      on-profile: postgres-sharded
+  jpa:
+    hibernate:
+      ddl-auto: update
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+
+app:
+  sharding:
+    num-shards: 2
+  datasource:
+    shard0:
+      url: jdbc:postgresql://localhost:5434/urlshortener
+      username: postgres
+      password: postgres
+      driver-class-name: org.postgresql.Driver
+    shard1:
+      url: jdbc:postgresql://localhost:5435/urlshortener
+      username: postgres
+      password: postgres
+      driver-class-name: org.postgresql.Driver
