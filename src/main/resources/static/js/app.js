@@ -35,11 +35,14 @@ const overlay  = document.getElementById('stamp-overlay');
 const seal     = document.getElementById('stamp-seal');
 const sealCode = document.getElementById('seal-code');
 
+const submitBtn    = document.getElementById('submit-btn');
+const progressFill = document.getElementById('stamp-progress-fill');
+
 function showStamping() {
   const label = document.getElementById('btn-label');
-  const icon  = document.getElementById('btn-icon');
-  label.textContent = 'STAMPING…';
-  if (icon) icon.style.opacity = '0.5';
+  label.textContent = 'PRESSING SEAL…';
+  if (submitBtn) submitBtn.classList.add('stamping');
+  if (progressFill) progressFill.style.width = '80%';
 
   overlay.classList.add('visible');
   seal.classList.remove('drop', 'landed');
@@ -59,7 +62,8 @@ function showStamping() {
 function showDispatched(shortCode) {
   sealCode.textContent = shortCode;
   const label = document.getElementById('btn-label');
-  label.textContent = 'DISPATCHED ✓';
+  label.textContent = 'STAMPED ✓';
+  if (progressFill) progressFill.style.width = '100%';
 }
 
 function hideStamp() {
@@ -69,9 +73,9 @@ function hideStamp() {
 
 function resetButton() {
   const label = document.getElementById('btn-label');
-  const icon  = document.getElementById('btn-icon');
   label.textContent = 'DISPATCH';
-  if (icon) icon.style.opacity = '';
+  if (submitBtn) submitBtn.classList.remove('stamping');
+  if (progressFill) progressFill.style.width = '0%';
   document.getElementById('submit-btn').disabled = false;
 }
 

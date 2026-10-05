@@ -102,7 +102,12 @@
             ${urls.map((u, i) => `
               <tr data-idx="${i}">
                 <td class="td-url" title="${esc(u.longUrl)}">${esc(u.longUrl)}</td>
-                <td class="td-short"><a href="${esc(u.shortUrl)}" target="_blank" rel="noopener">${esc(u.shortUrl)}</a></td>
+                <td class="td-short">
+                  <button class="short-code-chip" data-code="${esc(u.shortCode)}" data-url="${esc(u.shortUrl)}" title="Click to copy short link">
+                    <span class="code-txt">${esc(u.shortCode)}</span>
+                    <span class="copy-hint" aria-hidden="true">copy</span>
+                  </button>
+                </td>
                 <td class="td-key">
                   ${u.managementKey
                     ? `<code class="key-code" data-key="${esc(u.managementKey)}" title="Click to copy">${esc(u.managementKey)}</code>`
@@ -154,6 +159,21 @@
         // auto-run — see the autoTrackFromLink() handler in app.js.
         const params = new URLSearchParams({ trackCode: btn.dataset.code, trackKey: btn.dataset.key });
         window.location.href = `/index.html?${params.toString()}`;
+      });
+    });
+
+    document.querySelectorAll('.short-code-chip').forEach(chip => {
+      chip.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(chip.dataset.url || chip.dataset.code);
+          const origContent = chip.innerHTML;
+          chip.innerHTML = '<span class="code-txt" style="color:var(--success,#2D6A4F)">✓ Copied!</span>';
+          chip.classList.add('copied');
+          setTimeout(() => {
+            chip.innerHTML = origContent;
+            chip.classList.remove('copied');
+          }, 1400);
+        } catch {}
       });
     });
 
