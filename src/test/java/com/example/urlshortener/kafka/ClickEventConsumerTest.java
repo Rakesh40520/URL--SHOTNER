@@ -35,7 +35,7 @@ class ClickEventConsumerTest {
     @Test
     void onClickEvent_incrementsCountAndSavesClickEvent_whenLinkStillExists() {
         long epochMilli = 1_768_000_000_000L; // arbitrary fixed instant
-        ClickEventMessage message = new ClickEventMessage("abc1234", "203.0.113.5", epochMilli);
+        ClickEventMessage message = new ClickEventMessage("abc1234", "203.0.113.5", epochMilli, null, null);
 
         when(urlMappingRepository.incrementClickCount(eq("abc1234"), any(LocalDateTime.class))).thenReturn(1);
 
@@ -63,7 +63,7 @@ class ClickEventConsumerTest {
         // being processed (see ClickEventConsumer's own doc).
         when(urlMappingRepository.incrementClickCount(anyString(), any(LocalDateTime.class))).thenReturn(0);
 
-        consumer.onClickEvent(new ClickEventMessage("gone0000", "203.0.113.5", 1_768_000_000_000L));
+        consumer.onClickEvent(new ClickEventMessage("gone0000", "203.0.113.5", 1_768_000_000_000L, null, null));
 
         verify(clickEventRepository, never()).save(any(UrlClickEvent.class));
     }

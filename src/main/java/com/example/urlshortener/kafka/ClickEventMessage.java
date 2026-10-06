@@ -8,5 +8,6 @@ package com.example.urlshortener.kafka;
  * CachedShortUrl not being the full UrlMapping: keeps the message small and
  * avoids serializing a JPA entity straight onto a Kafka topic.
  */
-public record ClickEventMessage(String shortCode, String ipAddress, long clickedAtEpochMilli) {
+public record ClickEventMessage(String shortCode, String ipAddress, long clickedAtEpochMilli,
+                                String referrerHost, String referralTag) {
 }

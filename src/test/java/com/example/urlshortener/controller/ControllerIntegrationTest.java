@@ -165,6 +165,126 @@ class ControllerIntegrationTest {
                 .andExpect(jsonPath("$.content").isArray());
     }
 
+    // ── Click location / referrer analytics ──────────────────────────────────
+
+    @Test
+    void redirect_recordsReferrerHostAndRefTag_andAnalyticsAggregatesThem() throws Exception {
+        String token = jwtService.generateToken(savedUser);
+        String created = mvc.perform(post("/api/v1/urls").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"longUrl\":\"https://example.com\",\"expiresInDays\":7}"))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        String code = mapper.readTree(created).get("shortCode").asText();
+
+        mvc.perform(get("/" + code).header("Referer", "https://www.twitter.com/x/status/1?t=secret").param("ref", "alice"))
+                .andExpect(status().isFound());
+        mvc.perform(get("/" + code).param("ref", "qr")).andExpect(status().isFound());
+        mvc.perform(get("/" + code)).andExpect(status().isFound());
+
+        mvc.perform(get("/api/v1/urls/" + code + "/analytics").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalClicks").value(3))
+                .andExpect(jsonPath("$.topSources[?(@.label=='twitter.com')].count").value(1))
+                .andExpect(jsonPath("$.topSources[?(@.label=='Direct / unknown')].count").value(2))
+                .andExpect(jsonPath("$.topReferralTags[?(@.label=='alice')].count").value(1))
+                .andExpect(jsonPath("$.topReferralTags[?(@.label=='qr')].count").value(1));
+    }
+
+    @Test
+    void analytics_withoutOwnerOrKey_isForbidden() throws Exception {
+        String created = mvc.perform(post("/api/v1/urls").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"longUrl\":\"https://example.com\"}"))
+                .andReturn().getResponse().getContentAsString();
+        String code = mapper.readTree(created).get("shortCode").asText();
+
+        mvc.perform(get("/api/v1/urls/" + code + "/analytics")).andExpect(status().isForbidden());
+    }
+
+    // ── Stored management keys ───────────────────────────────────────────────
+
+    @Test
+    void ownedLink_keyIsStoredEncrypted_andReturnedInMyList() throws Exception {
+        String token = jwtService.generateToken(savedUser);
+        String created = mvc.perform(post("/api/v1/urls").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"longUrl\":\"https://example.com\",\"expiresInDays\":7}"))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        String key = mapper.readTree(created).get("managementKey").asText();
+
+        mvc.perform(get("/api/v1/urls/my").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].managementKey").value(key));
+    }
+
+    @Test
+    void anonymousLink_keyIsNeverStoredOnTheServer() throws Exception {
+        mvc.perform(post("/api/v1/urls").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"longUrl\":\"https://example.com\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.managementKey").isNotEmpty());
+        // nothing in any owner's list - there is no owner, so there is nowhere the key could be read back
+        org.junit.jupiter.api.Assertions.assertTrue(
+                urlMappingRepository.findAll().stream().allMatch(m -> m.getUser() != null
+                        || m.getManagementKeyEnc() == null));
+    }
+
+    // ── Subscription plans ───────────────────────────────────────────────────
+
+    @Test
+    void plans_isPublic_andListsAllThreeTiers() throws Exception {
+        mvc.perform(get("/api/v1/plans"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(3))
+                .andExpect(jsonPath("$[0].key").value("FREE"))
+                .andExpect(jsonPath("$[1].key").value("PRO"));
+    }
+
+    @Test
+    void subscription_requiresLogin() throws Exception {
+        mvc.perform(get("/api/v1/subscription")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void subscription_defaultsToFree_andUpgradeUnlocksCustomAlias() throws Exception {
+        String token = jwtService.generateToken(savedUser);
+        Map<String, Object> body = Map.of("longUrl", "https://example.com", "customAlias", "pro-alias", "expiresInDays", 7);
+
+        mvc.perform(get("/api/v1/subscription").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.plan.key").value("FREE"));
+
+        mvc.perform(post("/api/v1/urls").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsString(body)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("PLAN_FEATURE_LOCKED"))
+                .andExpect(jsonPath("$.requiredPlan").value("PRO"));
+
+        mvc.perform(post("/api/v1/subscription").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"plan\":\"PRO\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.plan.key").value("PRO"));
+
+        mvc.perform(post("/api/v1/urls").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsString(body)))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
+    void csvExport_isLockedOnFree_andAvailableOnPro() throws Exception {
+        String token = jwtService.generateToken(savedUser);
+
+        mvc.perform(get("/api/v1/urls/my/export").header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("PLAN_FEATURE_LOCKED"));
+
+        savedUser.setPlan(com.example.urlshortener.entity.SubscriptionPlan.PRO);
+        userRepository.save(savedUser);
+
+        mvc.perform(get("/api/v1/urls/my/export").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.containsString("my-dispatches.csv")));
+    }
+
     // ── URL ownership ─────────────────────────────────────────────────────────
 
     @Test

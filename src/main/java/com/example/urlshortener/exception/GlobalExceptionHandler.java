@@ -75,6 +75,21 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.FORBIDDEN, ex.getMessage());
     }
 
+    @ExceptionHandler(PlanLimitException.class)
+    public ResponseEntity<Map<String, Object>> handlePlanLimit(PlanLimitException ex) {
+        // 403 (not 402): the request is understood and the user is known, they
+        // just aren't entitled to it on their plan. "code" + "requiredPlan"
+        // let the frontend show an exact upgrade prompt.
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("timestamp", LocalDateTime.now());
+        body.put("status", HttpStatus.FORBIDDEN.value());
+        body.put("error", HttpStatus.FORBIDDEN.getReasonPhrase());
+        body.put("message", ex.getMessage());
+        body.put("code", ex.getCode());
+        body.put("requiredPlan", ex.getRequiredPlan().name());
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(body);
+    }
+
     @ExceptionHandler(InvalidManagementKeyException.class)
     public ResponseEntity<Map<String, Object>> handleInvalidManagementKey(InvalidManagementKeyException ex) {
         return build(HttpStatus.FORBIDDEN, ex.getMessage());

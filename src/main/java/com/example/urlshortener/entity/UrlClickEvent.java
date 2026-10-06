@@ -37,4 +37,30 @@ public class UrlClickEvent {
 
     @Column(length = 64)
     private String ipAddress;
+
+    // Who sent the click: the website it came from (host only) and/or an owner-set
+    // ?ref= tag. Both null for direct/unknown traffic.
+    @Column(length = 120)
+    private String referrerHost;
+
+    @Column(length = 30)
+    private String referralTag;
+
+    // Where the click came from, filled in shortly after the click by
+    // ClickGeoEnricher. Null until then, or permanently if the IP is private/unknown.
+    @Column(length = 100)
+    private String country;
+
+    @Column(length = 8)
+    private String countryCode;
+
+    @Column(length = 100)
+    private String region;
+
+    @Column(length = 100)
+    private String city;
+
+    // When a location lookup was last attempted (used by the retry job so a click
+    // isn't retried constantly). Null = never attempted by the retry job.
+    private LocalDateTime geoCheckedAt;
 }

@@ -18,4 +18,5 @@ public class UrlSummaryResponse {
     private long clickCount;
     private String status; // "Active", "Expired", "Flagged", or "Disabled"
     private String statusReason; // null unless status is "Flagged" or "Disabled"
+    private String managementKey; // owner's own list only; null if not stored (older links)
 }

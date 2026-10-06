@@ -14,4 +14,9 @@ import java.time.LocalDateTime;
 public class ClickResponse {
     private LocalDateTime clickedAt;
     private String ipAddress;
+    private String country;
+    private String region;
+    private String city;
+    private String referrerHost;
+    private String referralTag;
 }

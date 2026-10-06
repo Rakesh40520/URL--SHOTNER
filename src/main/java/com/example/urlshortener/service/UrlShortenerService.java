@@ -1,6 +1,9 @@
 package com.example.urlshortener.service;
 
+import com.example.urlshortener.dto.ClickAnalyticsResponse;
 import com.example.urlshortener.dto.ClickResponse;
+import com.example.urlshortener.dto.ClickSource;
+import com.example.urlshortener.dto.LabelCount;
 import com.example.urlshortener.dto.ReportResponse;
 import com.example.urlshortener.dto.ShortenRequest;
 import com.example.urlshortener.dto.ShortenResponse;
@@ -19,9 +22,11 @@ import com.example.urlshortener.exception.UnsafeUrlException;
 import com.example.urlshortener.exception.UrlBlockedException;
 import com.example.urlshortener.exception.UrlExpiredException;
 import com.example.urlshortener.exception.UrlNotFoundException;
+import com.example.urlshortener.geo.ClickGeoEnricher;
 import com.example.urlshortener.kafka.ClickEventPublisher;
 import com.example.urlshortener.repository.UrlClickEventRepository;
 import com.example.urlshortener.repository.UrlMappingRepository;
+import com.example.urlshortener.security.ManagementKeyVault;
 import com.example.urlshortener.safebrowsing.SafeBrowsingClient;
 import com.example.urlshortener.safebrowsing.SafeBrowsingResult;
 import com.example.urlshortener.sharding.ShardContext;
@@ -34,6 +39,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
@@ -103,6 +109,15 @@ public class UrlShortenerService {
     @Value("${app.kafka.enabled:false}")
     private boolean kafkaEnabled;
 
+    // Optional, field-injected (not part of the constructor) so existing plain-Mockito
+    // unit tests that build this service without it keep working; null-safe below.
+    @Autowired(required = false)
+    private ClickGeoEnricher geoEnricher;
+
+    // Same pattern: optional so plain-Mockito unit tests still build the service without it.
+    @Autowired(required = false)
+    private ManagementKeyVault keyVault;
+
     // Whether an inconclusive Safe Browsing answer (API disabled, or the
     // call itself failed/timed out) lets a link through or blocks it. True
     // (the default) prioritizes availability - a Safe Browsing outage
@@ -164,6 +179,12 @@ public class UrlShortenerService {
                 rawManagementKey, managementKeyHash);
     }
 
+    // Only account-owned links keep a (encrypted) copy of the key, so the owner can
+    // see it again; anonymous links keep the original show-once behaviour.
+    private String storedKeyFor(User owner, String rawKey) {
+        return owner != null && keyVault != null ? keyVault.encrypt(rawKey) : null;
+    }
+
     private ShortenResponse shortenWithCustomAlias(String longUrl, String alias, LocalDateTime now,
                                                      LocalDateTime expiresAt, String baseUrl, User currentUser,
                                                      String rawManagementKey, String managementKeyHash) {
@@ -184,6 +205,7 @@ public class UrlShortenerService {
                     .clickCount(0L)
                     .user(currentUser)
                     .managementKeyHash(managementKeyHash)
+                    .managementKeyEnc(storedKeyFor(currentUser, rawManagementKey))
                     .build();
 
             try {
@@ -242,6 +264,7 @@ public class UrlShortenerService {
                         .clickCount(0L)
                         .user(currentUser)
                         .managementKeyHash(managementKeyHash)
+                    .managementKeyEnc(storedKeyFor(currentUser, rawManagementKey))
                         .build();
 
                 try {
@@ -266,6 +289,11 @@ public class UrlShortenerService {
 
     @Transactional
     public String resolve(String shortCode, String clientIp) {
+        return resolve(shortCode, clientIp, ClickSource.NONE);
+    }
+
+    @Transactional
+    public String resolve(String shortCode, String clientIp, ClickSource source) {
         ShardContext.set(shardResolver.resolve(shortCode));
         try {
             Cache cache = shortUrlCache();
@@ -282,7 +310,7 @@ public class UrlShortenerService {
                     // of when it was cached - skip the SELECT entirely and go
                     // straight to recording the click.
                     recordCacheOutcome(true);
-                    recordClick(shortCode, clientIp);
+                    recordClick(shortCode, clientIp, source);
                     return cached.longUrl();
                 }
             }
@@ -315,7 +343,7 @@ public class UrlShortenerService {
                 cache.put(shortCode, new CachedShortUrl(mapping.getLongUrl(), mapping.getExpiresAt()));
             }
 
-            recordClick(shortCode, clientIp);
+            recordClick(shortCode, clientIp, source);
             return mapping.getLongUrl();
         } finally {
             // Under postgres-sharded, every code path above - cache hit,
@@ -335,20 +363,29 @@ public class UrlShortenerService {
     // publishes to Kafka and returns, so the redirect response doesn't wait
     // on any DB I/O at all. ClickEventConsumer does the actual persistence,
     // asynchronously, on its own consumer thread.
-    private void recordClick(String shortCode, String clientIp) {
+    private void recordClick(String shortCode, String clientIp, ClickSource source) {
         LocalDateTime now = LocalDateTime.now();
+        ClickSource src = source != null ? source : ClickSource.NONE;
 
         if (kafkaEnabled) {
-            clickEventPublisher.publish(shortCode, clientIp, now);
+            clickEventPublisher.publish(shortCode, clientIp, src, now);
             return;
         }
 
         repository.incrementClickCount(shortCode, now);
-        clickEventRepository.save(UrlClickEvent.builder()
+        UrlClickEvent saved = clickEventRepository.save(UrlClickEvent.builder()
                 .shortCode(shortCode)
                 .clickedAt(now)
                 .ipAddress(clientIp)
+                .referrerHost(src.referrerHost())
+                .referralTag(src.referralTag())
                 .build());
+
+        // Location lookup happens in the background after this transaction commits -
+        // the redirect never waits on it.
+        if (geoEnricher != null && saved != null) {
+            geoEnricher.enrichAfterCommit(saved.getId(), shortCode, clientIp);
+        }
     }
 
     private Cache shortUrlCache() {
@@ -424,10 +461,48 @@ public class UrlShortenerService {
                     .map(event -> ClickResponse.builder()
                             .clickedAt(event.getClickedAt())
                             .ipAddress(event.getIpAddress())
+                            .country(event.getCountry())
+                            .region(event.getRegion())
+                            .city(event.getCity())
+                            .referrerHost(event.getReferrerHost())
+                            .referralTag(event.getReferralTag())
                             .build());
         } finally {
             ShardContext.clear();
         }
+    }
+
+    /**
+     * Where a link's clicks came from (country/city) and who sent them (referring
+     * website, ?ref= tag). Aggregated in the database, never in memory. Same
+     * management-key-or-ownership gate as getStats/getClicks.
+     */
+    @Transactional(readOnly = true)
+    public ClickAnalyticsResponse getClickAnalytics(String shortCode, String managementKey, User currentUser) {
+        ShardContext.set(shardResolver.resolve(shortCode));
+        try {
+            UrlMapping mapping = repository.findByShortCode(shortCode)
+                    .orElseThrow(() -> new UrlNotFoundException(shortCode));
+            assertCanViewAnalytics(mapping, managementKey, currentUser);
+
+            PageRequest top = PageRequest.of(0, 8);
+            return ClickAnalyticsResponse.builder()
+                    .totalClicks(clickEventRepository.countByShortCode(shortCode))
+                    .clicksWithLocation(clickEventRepository.countByShortCodeAndCountryIsNotNull(shortCode))
+                    .topCountries(rows(clickEventRepository.topCountries(shortCode, top)))
+                    .topCities(rows(clickEventRepository.topCities(shortCode, top)))
+                    .topSources(rows(clickEventRepository.topSources(shortCode, top)))
+                    .topReferralTags(rows(clickEventRepository.topReferralTags(shortCode, top)))
+                    .build();
+        } finally {
+            ShardContext.clear();
+        }
+    }
+
+    private static java.util.List<LabelCount> rows(java.util.List<Object[]> raw) {
+        return raw.stream()
+                .map(r -> new LabelCount(String.valueOf(r[0]), ((Number) r[1]).longValue()))
+                .toList();
     }
 
     /**
@@ -482,6 +557,7 @@ public class UrlShortenerService {
                         .clickCount(mapping.getClickCount())
                         .status(statusLabel(mapping))
                         .statusReason(mapping.getStatusReason())
+                        .managementKey(keyVault != null ? keyVault.decrypt(mapping.getManagementKeyEnc()) : null)
                         .build());
     }
 

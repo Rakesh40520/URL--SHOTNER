@@ -56,6 +56,17 @@ app:
   # caller sending a different fake X-Forwarded-For on every request.
   trust-proxy-headers: false
 
+  # Click location + referrer analytics. Location comes from a free HTTPS IP-geolocation
+  # API called in the background AFTER the redirect, so it never slows a redirect down.
+  # Set trust-forwarded-for=true when deployed behind a proxy (Render, etc.), otherwise
+  # every click appears to come from the proxy's private IP and has no location.
+  # (Narrower than trust-proxy-headers above: it never affects rate limiting.)
+  geo:
+    enabled: true
+    trust-forwarded-for: false
+    # Providers are tried in order until one answers (comma-separated, {ip} placeholder).
+    # url-templates: https://ipwho.is/{ip},https://get.geojs.io/v1/ip/geo/{ip}.json,https://ipapi.co/{ip}/json/
+
   # Comma-separated list of allowed frontend origins for CORS. Defaults to
   # "*" (any origin) for local dev / demo use - lock this down to your
   # real frontend's origin(s) before any production deployment, e.g.:

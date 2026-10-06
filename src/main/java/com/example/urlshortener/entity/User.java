@@ -37,4 +37,18 @@ public class User {
 
     @Column(nullable = false)
     private LocalDateTime createdAt;
+
+    // Nullable on purpose: accounts created before subscriptions existed have
+    // no value here, and ddl-auto=update adds the column without a default.
+    // Always read it through getEffectivePlan(), which maps null -> FREE.
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private SubscriptionPlan plan;
+
+    // When the user's current plan was last changed (null = never changed).
+    private LocalDateTime planChangedAt;
+
+    public SubscriptionPlan getEffectivePlan() {
+        return plan == null ? SubscriptionPlan.FREE : plan;
+    }
 }

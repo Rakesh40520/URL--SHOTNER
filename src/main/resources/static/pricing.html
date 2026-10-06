@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="theme-color" content="#E6DAB8"/>
+<title>Pricing — Dispatch</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Special+Elite&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/nav.css"/>
+<link rel="stylesheet" href="css/features.css"/>
+</head>
+<body>
+
+<div id="site-nav"></div>
+
+<main class="pricing-page wrap">
+  <div class="pricing-head">
+    <p class="qr-eyebrow">PLANS</p>
+    <h1>Pick how you ship links</h1>
+    <p>Start free. Upgrade when you need more links, custom codes or longer-lived links.</p>
+    <div class="bill-toggle" role="group" aria-label="Billing period">
+      <button type="button" id="bill-month" aria-pressed="true">Monthly</button>
+      <button type="button" id="bill-year" aria-pressed="false">Yearly <small>2 months free</small></button>
+    </div>
+  </div>
+
+  <p class="pricing-err" id="pricing-err" hidden></p>
+  <div class="plan-grid" id="plan-grid" aria-live="polite"></div>
+
+  <div class="cmp-wrap">
+    <table class="cmp" id="cmp">
+      <thead><tr><th>Features</th><th>Free</th><th>Pro</th><th>Business</th></tr></thead>
+      <tbody id="cmp-body"></tbody>
+    </table>
+  </div>
+
+  <p class="pricing-note">Demo checkout: choosing a plan switches it instantly and no payment is taken.</p>
+</main>
+
+<script src="js/auth.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/nav.js"></script>
+<script src="js/plans.js"></script>
+<script>
+  Nav.render();
+
+  let plans = [], current = null, yearly = false;
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const order = ['FREE', 'PRO', 'BUSINESS'];
+
+  function priceBlock(p) {
+    if (p.priceMonthlyCents === 0) return `<div class="plan-price">Free</div><p class="plan-sub">forever</p>`;
+    if (yearly) {
+      const perMonth = Math.round(p.priceYearlyCents / 12);
+      return `<div class="plan-price">${Plans.price(perMonth)}<small> / mo</small></div>
+              <p class="plan-sub">${Plans.price(p.priceYearlyCents)} billed yearly</p>`;
+    }
+    return `<div class="plan-price">${Plans.price(p.priceMonthlyCents)}<small> / mo</small></div><p class="plan-sub">billed monthly</p>`;
+  }
+
+  function render() {
+    const grid = document.getElementById('plan-grid');
+    grid.innerHTML = plans.map(p => {
+      const isCurrent = current === p.key;
+      const feats = p.features.map(f => `<li class="${/^No |^Random/.test(f) ? 'off' : ''}">${esc(f)}</li>`).join('');
+      return `
+        <section class="plan-tile ${p.popular ? 'popular' : ''}" aria-label="${esc(p.name)} plan">
+          ${p.popular ? '<span class="ribbon">MOST POPULAR</span>' : ''}
+          <h2>${esc(p.name)}</h2>
+          <p class="tag">${esc(p.tagline)}</p>
+          ${priceBlock(p)}
+          <ul class="plan-feats">${feats}</ul>
+          <button type="button" class="plan-cta" data-plan="${p.key}" ${isCurrent ? 'disabled' : ''}>
+            ${isCurrent ? 'Your current plan' : (Auth.isLoggedIn() ? 'Choose ' + esc(p.name) : (p.priceMonthlyCents ? 'Sign up for ' + esc(p.name) : 'Get started free'))}
+          </button>
+        </section>`;
+    }).join('');
+
+    const row = (label, fn) => `<tr><td>${label}</td>${plans.map(p => `<td>${fn(p)}</td>`).join('')}</tr>`;
+    const yes = '<span class="yes" aria-label="Included">✓</span>', no = '<span class="no" aria-label="Not included">–</span>';
+    document.getElementById('cmp-body').innerHTML = [
+      row('New links per month', p => p.monthlyLinkLimit < 0 ? 'Unlimited' : p.monthlyLinkLimit),
+      row('Custom short codes', p => p.customAlias ? yes : no),
+      row('Longest link lifetime', p => p.maxExpiryDays == null ? 'Never expires' : p.maxExpiryDays + ' days'),
+      row('CSV export', p => p.csvExport ? yes : no),
+      row('QR codes (PNG / SVG)', () => yes),
+      row('Click location &amp; referrers', () => yes),
+      row('Safe Browsing protection', () => yes),
+    ].join('');
+  }
+
+  document.getElementById('plan-grid').addEventListener('click', async e => {
+    const btn = e.target.closest('.plan-cta');
+    if (!btn || btn.disabled) return;
+    const key = btn.dataset.plan;
+    if (!Auth.isLoggedIn()) { window.location.href = '/register.html'; return; }
+    btn.classList.add('busy'); btn.disabled = true;
+    try {
+      const sub = await Plans.change(key);
+      if (sub) {
+        current = sub.plan.key;
+        UI.toast('You\'re now on the ' + sub.plan.name + ' plan');
+      }
+    } catch (err) {
+      UI.toast(err.message, { type: 'error' });
+    }
+    render();
+  });
+
+  function setBilling(y) {
+    yearly = y;
+    document.getElementById('bill-month').setAttribute('aria-pressed', String(!y));
+    document.getElementById('bill-year').setAttribute('aria-pressed', String(y));
+    render();
+  }
+  document.getElementById('bill-month').addEventListener('click', () => setBilling(false));
+  document.getElementById('bill-year').addEventListener('click', () => setBilling(true));
+
+  (async () => {
+    try {
+      plans = (await Plans.list()).slice().sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key));
+      const mine = await Plans.mine();
+      current = mine ? mine.plan.key : null;
+      render();
+    } catch {
+      const el = document.getElementById('pricing-err');
+      el.textContent = 'Could not load plans. Please refresh.'; el.hidden = false;
+    }
+  })();
+</script>
+</body>
+</html>

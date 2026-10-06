@@ -15,3 +15,7 @@ services:
         generateValue: true
       - key: PORT
         value: "10000"
+      # Real visitor IP (X-Forwarded-For) for click location analytics only.
+      # Does not affect rate limiting.
+      - key: APP_GEO_TRUST_FORWARDED_FOR
+        value: "true"

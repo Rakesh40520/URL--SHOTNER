@@ -1,5 +1,6 @@
 package com.example.urlshortener.kafka;
 
+import com.example.urlshortener.dto.ClickSource;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 
@@ -34,7 +35,13 @@ public class ClickEventPublisher {
     }
 
     public void publish(String shortCode, String ipAddress, LocalDateTime clickedAt) {
+        publish(shortCode, ipAddress, ClickSource.NONE, clickedAt);
+    }
+
+    public void publish(String shortCode, String ipAddress, ClickSource source, LocalDateTime clickedAt) {
         long epochMilli = clickedAt.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
-        kafkaTemplate.send(TOPIC, shortCode, new ClickEventMessage(shortCode, ipAddress, epochMilli));
+        ClickSource src = source != null ? source : ClickSource.NONE;
+        kafkaTemplate.send(TOPIC, shortCode, new ClickEventMessage(shortCode, ipAddress, epochMilli,
+                src.referrerHost(), src.referralTag()));
     }
 }
