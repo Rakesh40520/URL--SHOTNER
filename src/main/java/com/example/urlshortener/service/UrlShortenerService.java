@@ -694,9 +694,9 @@ public class UrlShortenerService {
             // Trigger malicious threat check on report if Safe Browsing is configured
             if (safeBrowsingClient != null && safeBrowsingClient.isEnabled()) {
                 SafeBrowsingResult result = safeBrowsingClient.check(mapping.getLongUrl());
-                if (result.getStatus() == SafeBrowsingResult.Status.MATCH) {
-                    mapping.setStatus(UrlStatus.BLOCKED_MALICIOUS);
-                    mapping.setStatusReason("Blocked: threat detected by Safe Browsing (" + result.getThreatType() + ")");
+                if (result.isUnsafe()) {
+                    mapping.setStatus(UrlStatus.FLAGGED);
+                    mapping.setStatusReason("Blocked: threat detected by Safe Browsing (" + String.join(", ", result.threatTypes()) + ")");
                     autoFlagged = true;
                     evictFromCache(shortCode);
                 }
