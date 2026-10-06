@@ -18,10 +18,10 @@
   <div class="pricing-head">
     <p class="qr-eyebrow">PLANS</p>
     <h1>Pick how you ship links</h1>
-    <p>Start free. Upgrade when you need more links, custom codes or longer-lived links.</p>
+    <p>All plans are 100% free! Choose any subscription tier below to unlock premium features instantly.</p>
     <div class="bill-toggle" role="group" aria-label="Billing period">
       <button type="button" id="bill-month" aria-pressed="true">Monthly</button>
-      <button type="button" id="bill-year" aria-pressed="false">Yearly <small>2 months free</small></button>
+      <button type="button" id="bill-year" aria-pressed="false">Yearly <small>Free</small></button>
     </div>
   </div>
 
@@ -35,7 +35,7 @@
     </table>
   </div>
 
-  <p class="pricing-note">Demo checkout: choosing a plan switches it instantly and no payment is taken.</p>
+  <p class="pricing-note">All subscription tiers are completely free. Selecting a plan activates it immediately at no cost.</p>
 </main>
 
 <script src="js/auth.js"></script>
@@ -50,13 +50,7 @@
   const order = ['FREE', 'PRO', 'BUSINESS'];
 
   function priceBlock(p) {
-    if (p.priceMonthlyCents === 0) return `<div class="plan-price">Free</div><p class="plan-sub">forever</p>`;
-    if (yearly) {
-      const perMonth = Math.round(p.priceYearlyCents / 12);
-      return `<div class="plan-price">${Plans.price(perMonth)}<small> / mo</small></div>
-              <p class="plan-sub">${Plans.price(p.priceYearlyCents)} billed yearly</p>`;
-    }
-    return `<div class="plan-price">${Plans.price(p.priceMonthlyCents)}<small> / mo</small></div><p class="plan-sub">billed monthly</p>`;
+    return `<div class="plan-price">Free</div><p class="plan-sub">100% free</p>`;
   }
 
   function render() {
@@ -72,7 +66,7 @@
           ${priceBlock(p)}
           <ul class="plan-feats">${feats}</ul>
           <button type="button" class="plan-cta" data-plan="${p.key}" ${isCurrent ? 'disabled' : ''}>
-            ${isCurrent ? 'Your current plan' : (Auth.isLoggedIn() ? 'Choose ' + esc(p.name) : (p.priceMonthlyCents ? 'Sign up for ' + esc(p.name) : 'Get started free'))}
+            ${isCurrent ? 'Your current plan' : (Auth.isLoggedIn() ? 'Get ' + esc(p.name) + ' (Free)' : 'Get started free')}
           </button>
         </section>`;
     }).join('');
@@ -95,15 +89,22 @@
     if (!btn || btn.disabled) return;
     const key = btn.dataset.plan;
     if (!Auth.isLoggedIn()) { window.location.href = '/register.html'; return; }
-    btn.classList.add('busy'); btn.disabled = true;
+    const origText = btn.textContent;
+    btn.classList.add('busy');
+    btn.disabled = true;
+    btn.textContent = 'Activating…';
     try {
       const sub = await Plans.change(key);
       if (sub) {
         current = sub.plan.key;
-        UI.toast('You\'re now on the ' + sub.plan.name + ' plan');
+        UI.toast('You\'re now on the ' + sub.plan.name + ' plan (Free)');
       }
     } catch (err) {
       UI.toast(err.message, { type: 'error' });
+    } finally {
+      btn.classList.remove('busy');
+      btn.disabled = false;
+      btn.textContent = origText;
     }
     render();
   });

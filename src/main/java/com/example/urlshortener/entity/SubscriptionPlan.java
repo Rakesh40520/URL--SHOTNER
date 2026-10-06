@@ -15,8 +15,8 @@ public enum SubscriptionPlan {
 
     //            name        $/mo (cents)  links/mo  custom alias  max expiry (days; null = never)  CSV export  tagline
     FREE("Free",     0,    20,    false, 30,   false, "For trying Dispatch out."),
-    PRO("Pro",       499,  500,   true,  365,  true,  "For creators and side projects."),
-    BUSINESS("Business", 1499, -1 /* = NO_LIMIT; a static can't be referenced before its declaration here */, true, null, true, "For teams that ship links daily.");
+    PRO("Pro",       0,    500,   true,  365,  true,  "Free for creators and side projects."),
+    BUSINESS("Business", 0, -1 /* = NO_LIMIT; a static can't be referenced before its declaration here */, true, null, true, "Free for teams that ship links daily.");
 
     /** Sentinel for "no monthly cap". */
     public static final int NO_LIMIT = -1;

@@ -176,6 +176,8 @@
 
     document.querySelectorAll('.track-row-btn').forEach(btn => {
       btn.addEventListener('click', () => {
+        btn.disabled = true;
+        btn.textContent = 'Tracking…';
         // Hands off to the home page's tracking section, pre-filled and
         // auto-run — see the autoTrackFromLink() handler in app.js.
         const params = new URLSearchParams({ trackCode: btn.dataset.code, trackKey: btn.dataset.key });

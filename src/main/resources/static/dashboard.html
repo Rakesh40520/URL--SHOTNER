@@ -347,6 +347,8 @@
     // Track buttons (navigate to tracking section on home page)
     tbody.querySelectorAll('.track-btn').forEach(btn => {
       btn.addEventListener('click', () => {
+        btn.disabled = true;
+        btn.textContent = 'Tracking…';
         window.location.href = `/index.html?trackCode=${encodeURIComponent(btn.dataset.code)}`;
       });
     });

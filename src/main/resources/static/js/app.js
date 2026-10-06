@@ -325,8 +325,13 @@ document.getElementById('result-qr-btn').addEventListener('click', () => {
 /* ── Track button on the dispatched result card ── */
 document.getElementById('result-track-btn').addEventListener('click', () => {
   // trackCode/trackKey are already pre-filled by renderResultCard(), so this
-  // just runs the same lookup and scrolls the (separate) results into view.
-  document.getElementById('track-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  // smoothly scrolls the tracking section into view, highlights it, and triggers lookup.
+  const trackSec = document.getElementById('track-section');
+  if (trackSec) {
+    trackSec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    trackSec.classList.add('highlight-section');
+    setTimeout(() => trackSec.classList.remove('highlight-section'), 1500);
+  }
   document.getElementById('track-btn').click();
 });
 
@@ -409,11 +414,12 @@ async function loadAnalytics(code, key) {
 
 /* ── Track / stats ── */
 document.getElementById('track-btn').addEventListener('click', async () => {
-  const rawCode = document.getElementById('trackCode').value;
-  const code    = extractShortCode(rawCode);
-  const key     = document.getElementById('trackKey').value.trim();
-  const errorEl = document.getElementById('track-error');
-  const result  = document.getElementById('track-result');
+  const trackBtn = document.getElementById('track-btn');
+  const rawCode  = document.getElementById('trackCode').value;
+  const code     = extractShortCode(rawCode);
+  const key      = document.getElementById('trackKey').value.trim();
+  const errorEl  = document.getElementById('track-error');
+  const result   = document.getElementById('track-result');
 
   errorEl.hidden = true;
   result.hidden  = true;
@@ -423,23 +429,24 @@ document.getElementById('track-btn').addEventListener('click', async () => {
     return;
   }
 
+  // Keep loading button state while data is in flight
+  const origText = trackBtn.textContent;
+  trackBtn.disabled = true;
+  trackBtn.classList.add('loading');
+  trackBtn.textContent = 'Tracking…';
+
   try {
-    // Auth.apiFetch attaches the JWT if logged in, so an owner can view
-    // their own link's stats without needing the management key at all.
-    // The management key itself goes in a header rather than the query
-    // string - a query param would end up in server access logs and
-    // browser history, which we don't want for something that acts like a
-    // bearer secret for this one link.
     const headers = key ? { 'X-Management-Key': key } : {};
     const res = await Auth.apiFetch(`/api/v1/urls/${encodeURIComponent(code)}/stats`, { headers });
     if (!res) return; // Auth.apiFetch already redirected on 401
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
 
     if (!res.ok) {
       errorEl.textContent = res.status === 403
         ? 'That management key doesn\'t match this link (or you\'re not its owner).'
         : (data.message || 'No parcel found with that code.');
       errorEl.hidden = false;
+      result.hidden = true;
       return;
     }
 
@@ -447,17 +454,26 @@ document.getElementById('track-btn').addEventListener('click', async () => {
     document.getElementById('track-created').textContent = formatDate(data.createdAt) || '—';
     document.getElementById('track-last').textContent    = data.lastAccessedAt
       ? formatDate(data.lastAccessedAt) : 'Not yet clicked';
-    // data.status comes straight from the API ("Active"/"Flagged"/
-    // "Disabled") - expired is still checked client-side first since a
-    // link can be both expired and otherwise Active/Flagged/Disabled, and
-    // "Expired" is the more useful thing to show here.
     document.getElementById('track-status').textContent  = data.expired ? 'Expired' : (data.status || 'Active');
     document.getElementById('track-dest-url').textContent = data.longUrl;
+
+    // Smooth transition animation
+    result.classList.add('anim-entering');
     result.hidden = false;
+    void result.offsetHeight; // trigger reflow
+    result.classList.remove('anim-entering');
+    result.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
     loadAnalytics(code, key);
   } catch {
-    errorEl.textContent = 'Network error — could not look up that code.';
+    // If data did not come, show error
+    errorEl.textContent = 'Network error — could not reach the server to look up that code.';
     errorEl.hidden = false;
+    result.hidden = true;
+  } finally {
+    trackBtn.disabled = false;
+    trackBtn.classList.remove('loading');
+    trackBtn.textContent = origText;
   }
 });
 
@@ -469,11 +485,8 @@ document.getElementById('track-btn').addEventListener('click', async () => {
 );
 
 /* ── Report abuse ── */
-// Deliberately asks for nothing but a short code - no login, no management
-// key - since the whole point is letting someone who was sent a malicious
-// short link flag it even though they have no account for it. Rate-limited
-// server-side per IP (see RateLimitFilter/app.report-rate-limit).
 document.getElementById('report-btn').addEventListener('click', async () => {
+  const btn     = document.getElementById('report-btn');
   const rawCode = document.getElementById('reportCode').value;
   const code    = extractShortCode(rawCode);
   const reason  = document.getElementById('reportReason').value.trim();
@@ -488,8 +501,10 @@ document.getElementById('report-btn').addEventListener('click', async () => {
     return;
   }
 
-  const btn = document.getElementById('report-btn');
+  const origBtnText = btn.textContent;
   btn.disabled = true;
+  btn.classList.add('loading');
+  btn.textContent = 'Submitting…';
 
   try {
     const res = await fetch(`/api/v1/urls/${encodeURIComponent(code)}/report`, {
@@ -520,15 +535,15 @@ document.getElementById('report-btn').addEventListener('click', async () => {
     errorEl.hidden = false;
   } finally {
     btn.disabled = false;
+    btn.classList.remove('loading');
+    btn.textContent = origBtnText;
   }
 });
 
 /* ── Init ── */
 Nav.render();
 
-// Arriving from history.html's "Track" button (?trackCode=...&trackKey=...):
-// pre-fill both fields, scroll to the tracking section, and run the lookup
-// automatically so it's a one-click hop from "Session History" to results.
+// Arriving from history.html or dashboard.html "Track" button:
 (function autoTrackFromLink() {
   const params = new URLSearchParams(window.location.search);
   const code = params.get('trackCode');
@@ -540,6 +555,11 @@ Nav.render();
   // Clean the URL so refreshing the page doesn't re-trigger this.
   window.history.replaceState({}, '', window.location.pathname);
 
-  document.getElementById('track-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const trackSec = document.getElementById('track-section');
+  if (trackSec) {
+    trackSec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    trackSec.classList.add('highlight-section');
+    setTimeout(() => trackSec.classList.remove('highlight-section'), 1500);
+  }
   document.getElementById('track-btn').click();
 })();
