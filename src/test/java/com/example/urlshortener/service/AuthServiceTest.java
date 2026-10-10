@@ -31,6 +31,7 @@ class AuthServiceTest {
 
     @Mock private UserRepository userRepository;
     @Mock private JwtService jwtService;
+    @Mock private OtpService otpService;
 
     // Use a real BCryptPasswordEncoder so we can verify actual hashing
     // behaviour — this is the one place where a real implementation is more
@@ -41,7 +42,7 @@ class AuthServiceTest {
 
     @BeforeEach
     void setUp() {
-        authService = new AuthService(userRepository, passwordEncoder, jwtService);
+        authService = new AuthService(userRepository, passwordEncoder, jwtService, otpService);
     }
 
     // ── Registration ────────────────────────────────────────────────────────
@@ -161,6 +162,57 @@ class AuthServiceTest {
 
         // Same exception as wrong-password — avoids leaking which emails exist
         assertThrows(InvalidCredentialsException.class, () -> authService.login(req));
+    }
+
+    // ── Forgot & Reset Password ──────────────────────────────────────────────
+
+    @Test
+    void forgotPassword_existingUser_sendsOtp() {
+        User user = buildUser("ada@example.com", "Secret123!");
+        when(userRepository.findByEmail("ada@example.com")).thenReturn(Optional.of(user));
+
+        authService.forgotPassword("ada@example.com");
+
+        verify(otpService).sendOtp("ada@example.com", com.example.urlshortener.entity.OtpPurpose.PASSWORD_RESET);
+    }
+
+    @Test
+    void forgotPassword_nonExistentUser_throwsException() {
+        when(userRepository.findByEmail("unknown@example.com")).thenReturn(Optional.empty());
+
+        assertThrows(IllegalArgumentException.class, () -> authService.forgotPassword("unknown@example.com"));
+        verifyNoInteractions(otpService);
+    }
+
+    @Test
+    void resetPassword_validRequest_updatesPasswordHash() {
+        User user = buildUser("ada@example.com", "OldPassword123!");
+        when(userRepository.findByEmail("ada@example.com")).thenReturn(Optional.of(user));
+        when(otpService.verifyOtp("ada@example.com", "123456", com.example.urlshortener.entity.OtpPurpose.PASSWORD_RESET, true))
+                .thenReturn(true);
+
+        com.example.urlshortener.dto.ResetPasswordRequest req = new com.example.urlshortener.dto.ResetPasswordRequest();
+        req.setEmail("ada@example.com");
+        req.setOtp("123456");
+        req.setNewPassword("NewSecret888!");
+        req.setConfirmNewPassword("NewSecret888!");
+
+        authService.resetPassword(req);
+
+        verify(userRepository).save(user);
+        assertTrue(passwordEncoder.matches("NewSecret888!", user.getPasswordHash()));
+    }
+
+    @Test
+    void resetPassword_mismatchedConfirmPassword_throwsException() {
+        com.example.urlshortener.dto.ResetPasswordRequest req = new com.example.urlshortener.dto.ResetPasswordRequest();
+        req.setEmail("ada@example.com");
+        req.setOtp("123456");
+        req.setNewPassword("NewSecret888!");
+        req.setConfirmNewPassword("Different888!");
+
+        assertThrows(IllegalArgumentException.class, () -> authService.resetPassword(req));
+        verifyNoInteractions(otpService);
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────

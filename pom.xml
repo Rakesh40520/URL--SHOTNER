@@ -140,6 +140,12 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- Mail: OTP and email delivery -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
+
         <!-- Boilerplate reduction -->
         <dependency>
             <groupId>org.projectlombok</groupId>

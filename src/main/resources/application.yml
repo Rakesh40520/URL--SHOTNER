@@ -21,6 +21,24 @@ spring:
         format_sql: true
     open-in-view: false
 
+  # Email SMTP configuration (Gmail, SendGrid, Mailgun, Amazon SES, etc.)
+  # If credentials are not supplied, the app automatically runs in Dev Mode (logging OTP to console).
+  mail:
+    host: ${SPRING_MAIL_HOST:smtp.gmail.com}
+    port: ${SPRING_MAIL_PORT:587}
+    username: ${SPRING_MAIL_USERNAME:}
+    password: ${SPRING_MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+
   # Only actually connected to when app.redis.enabled=true (see
   # RedisRateLimitConfig / CacheConfig) - otherwise Spring Data Redis just
   # builds a connection factory that's never touched, so this is harmless
@@ -82,6 +100,11 @@ app:
   auth-rate-limit:
     max-requests: 10   # per client IP, for POST /api/v1/auth/{login,register}
     window-seconds: 60 # per this many seconds
+
+  mail:
+    from: ${APP_MAIL_FROM:Dispatch URL Shortener <noreply@dispatch.io>}
+    otp-validity-minutes: 10
+    cooldown-seconds: 60
 
   report-rate-limit:
     max-requests: 5    # per client IP, for POST /api/v1/urls/{shortCode}/report

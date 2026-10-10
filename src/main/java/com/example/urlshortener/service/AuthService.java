@@ -25,6 +25,7 @@ public class AuthService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final OtpService otpService;
 
     @Transactional
     public AuthResponse register(RegisterRequest request) {
@@ -59,5 +60,33 @@ public class AuthService {
         }
 
         return new AuthResponse(jwtService.generateToken(user), user.getEmail(), user.getName());
+    }
+
+    @Transactional
+    public void forgotPassword(String email) {
+        String normalizedEmail = email.trim().toLowerCase();
+        // Check if user exists
+        User user = userRepository.findByEmail(normalizedEmail)
+                .orElseThrow(() -> new IllegalArgumentException("No account found with this email address."));
+
+        otpService.sendOtp(user.getEmail(), com.example.urlshortener.entity.OtpPurpose.PASSWORD_RESET);
+    }
+
+    @Transactional
+    public void resetPassword(com.example.urlshortener.dto.ResetPasswordRequest request) {
+        if (!request.getNewPassword().equals(request.getConfirmNewPassword())) {
+            throw new IllegalArgumentException("newPassword and confirmNewPassword do not match");
+        }
+
+        String normalizedEmail = request.getEmail().trim().toLowerCase();
+        User user = userRepository.findByEmail(normalizedEmail)
+                .orElseThrow(() -> new IllegalArgumentException("No account found with this email address."));
+
+        // Verify and mark OTP as used
+        otpService.verifyOtp(normalizedEmail, request.getOtp(), com.example.urlshortener.entity.OtpPurpose.PASSWORD_RESET, true);
+
+        // Update password
+        user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        userRepository.save(user);
     }
 }
