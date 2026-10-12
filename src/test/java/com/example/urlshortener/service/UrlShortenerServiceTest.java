@@ -274,12 +274,11 @@ class UrlShortenerServiceTest {
                 .build();
 
         when(repository.findByShortCode("abc123")).thenReturn(Optional.of(mapping));
-        when(repository.save(any(UrlMapping.class))).thenAnswer(inv -> inv.getArgument(0));
 
         String longUrl = service.resolve("abc123", "203.0.113.5");
 
         assertEquals("https://example.com", longUrl);
-        assertEquals(5L, mapping.getClickCount());
+        verify(repository).incrementClickCount(eq("abc123"), any(LocalDateTime.class));
         verify(clickEventRepository).save(argThat(event ->
                 event.getShortCode().equals("abc123") && "203.0.113.5".equals(event.getIpAddress())));
     }

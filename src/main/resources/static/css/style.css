@@ -115,72 +115,96 @@ input::placeholder { color: #8a8266; }
   box-shadow: 0 0 8px #ffd166;
   transition: width 0.6s ease-out;
 }
-.stamp-btn.stamping .stamp-progress-fill {
-  width: 85%;
-}
 
-/* ── Stamp animation overlay ── */
+
+/* ── Dispatch progress overlay ── */
 .stamp-overlay {
-  position: fixed; inset: 0;
-  display: flex; align-items: center; justify-content: center;
-  background: rgba(33,29,24,.6);
-  backdrop-filter: blur(2px);
-  z-index: 200;
-  opacity: 0; pointer-events: none;
-  transition: opacity .2s;
+  position: fixed; inset: 0; z-index: 200;
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+  background: rgba(33,29,24,.62); backdrop-filter: blur(3px);
+  opacity: 0; pointer-events: none; transition: opacity .25s;
 }
 .stamp-overlay.visible { opacity: 1; pointer-events: auto; }
 
-.stamp-press-assembly {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+.dispatch-sheet {
+  position: relative; width: min(100%, 340px); text-align: center;
+  background: var(--paper); border: 1.5px solid var(--ink); border-radius: var(--radius);
+  box-shadow: 6px 6px 0 rgba(0,0,0,.28);
+  padding: 26px 22px 18px;
+  transform: translateY(14px) scale(.97);
+  transition: transform .3s cubic-bezier(.2,.8,.2,1);
+}
+.dispatch-sheet::before {            /* perforated label edge, like the form card */
+  content: ''; position: absolute; top: -1px; left: 14px; right: 14px; height: 1px;
+  background-image: radial-gradient(circle, var(--kraft) 2px, transparent 2.2px);
+  background-size: 14px 2px; background-repeat: repeat-x;
+}
+.stamp-overlay.visible .dispatch-sheet { transform: none; }
+.dispatch-sheet.thud { animation: sheetThud .3s ease-out; }
+@keyframes sheetThud {
+  0% { transform: none; } 30% { transform: translateY(5px) scale(.99); }
+  60% { transform: translateY(-2px); } 100% { transform: none; }
 }
 
+/* Seal: faint + slowly turning while we wait, slams down when the code arrives */
 .stamp-seal {
-  position: relative; width: 160px; height: 160px;
+  position: relative; width: 128px; height: 128px; margin: 0 auto 18px;
   display: flex; align-items: center; justify-content: center;
-  color: var(--stamp-red);
-  transform: scale(0.3) rotate(-30deg);
-  opacity: 0;
-  transition: none;
+  color: var(--stamp-red); opacity: .28; transform: rotate(-8deg);
+  transition: opacity .25s;
 }
-.stamp-seal.drop {
-  transition: transform .35s cubic-bezier(.17,.67,.35,1.4), opacity .2s;
-  transform: scale(1) rotate(-8deg);
-  opacity: 1;
-}
-.stamp-seal.landed {
-  transition: transform .08s ease-out;
-  transform: scale(0.96) rotate(-8deg);
-  filter: drop-shadow(0 0 20px rgba(200, 75, 49, 0.6));
+.seal-ring { position: absolute; inset: 0; width: 100%; height: 100%; animation: ringSpin 14s linear infinite; }
+@keyframes ringSpin { to { transform: rotate(360deg); } }
+.stamp-seal.slam { opacity: 1; animation: sealSlam .42s cubic-bezier(.2,.9,.25,1.15) forwards; }
+.stamp-seal.slam .seal-ring { animation: none; }
+@keyframes sealSlam {
+  0%   { transform: scale(1.8) rotate(-20deg); opacity: 0; }
+  55%  { transform: scale(.93) rotate(-7deg);  opacity: 1; }
+  100% { transform: scale(1)   rotate(-8deg);  opacity: 1; }
 }
 .seal-glow {
-  position: absolute;
-  inset: -15px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(200, 75, 49, 0.35) 0%, transparent 70%);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.3s ease;
+  position: absolute; inset: -14px; border-radius: 50%; pointer-events: none; opacity: 0;
+  background: radial-gradient(circle, rgba(178,58,46,.38) 0%, transparent 70%);
 }
-.stamp-seal.landed .seal-glow {
-  opacity: 1;
-}
-.seal-ring { position: absolute; inset: 0; width: 100%; height: 100%; }
-.seal-text {
-  position: relative; z-index: 1; text-align: center;
-}
+.stamp-seal.slam .seal-glow { animation: inkRipple .65s ease-out .18s; }
+@keyframes inkRipple { 0% { opacity: 1; transform: scale(.8); } 100% { opacity: 0; transform: scale(1.4); } }
+.seal-text { position: relative; z-index: 1; text-align: center; }
 .seal-word {
-  font-family: var(--font-display); font-size: .65rem;
-  letter-spacing: .25em; text-transform: uppercase; color: var(--stamp-red);
-  margin-bottom: 4px;
+  font-family: var(--font-display); font-size: .6rem;
+  letter-spacing: .25em; text-transform: uppercase; margin-bottom: 4px;
 }
-.seal-code {
-  font-family: var(--font-mono); font-weight: 600; font-size: 1.3rem;
-  color: var(--stamp-red);
+.seal-code { font-family: var(--font-mono); font-weight: 600; font-size: 1.2rem; }
+
+/* Stage checklist */
+.stage-list { list-style: none; margin: 0 0 16px; padding: 0; text-align: left;
+  font-family: var(--font-mono); font-size: .8rem; }
+.stage-list li {
+  display: flex; align-items: center; gap: 10px; padding: 5px 0;
+  color: var(--ink-soft); opacity: .45; transition: opacity .2s, color .2s;
 }
+.stage-list li::before {
+  content: ''; flex: none; width: 13px; height: 13px; border-radius: 50%;
+  border: 1.5px solid currentColor; transition: background .15s, border-color .15s;
+}
+.stage-list li.active { opacity: 1; color: var(--ink); }
+.stage-list li.active::before { border-color: var(--stamp-red); border-top-color: transparent; animation: spin .8s linear infinite; }
+.stage-list li.done { opacity: 1; color: var(--success); }
+.stage-list li.done::before {
+  border-color: var(--success);
+  background: var(--success) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2l2.3 2.3 4.7-5' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 9px no-repeat;
+}
+
+/* Progress: eases toward ~90% while waiting, only reaches 100% on a real response */
+.sheet-progress { height: 7px; background: var(--kraft); border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.sheet-progress-fill {
+  height: 100%; width: 0%; border-radius: 3px;
+  background: repeating-linear-gradient(45deg, var(--stamp-red) 0 8px, #cf5a48 8px 16px);
+  background-size: 22.6px 22.6px;
+  animation: barberPole .9s linear infinite;
+}
+@keyframes barberPole { to { background-position: 22.6px 0; } }
+.sheet-progress.done .sheet-progress-fill { animation: none; background: var(--success); transition: width .25s ease-out, background .25s; }
+.sheet-note { min-height: 2.4em; margin: 10px 0 0; font-size: .75rem; line-height: 1.4; color: var(--ink-soft); }
 
 /* ── Result card ── */
 .result-card { animation: slideIn .25s ease-out; }
@@ -285,13 +309,41 @@ input::placeholder { color: #8a8266; }
 .site-footer .wrap { border-top: 1px dashed var(--line); padding-top: 20px; }
 
 /* ── Responsive ── */
+@media (max-width: 760px) {
+  .hero { padding: 32px 0 22px; }
+  .label-card, .result-card, .tracking-card { padding: 22px 18px 20px; }
+}
 @media (max-width: 620px) {
-  .label-row.two-col { grid-template-columns: 1fr; }
-  .track-grid { grid-template-columns: repeat(2,1fr); }
-  .result-url-row { flex-direction: column; align-items: flex-start; }
+  .hero { padding: 24px 0 18px; }
+  .hero h1 { font-size: 1.85rem; }
+  .lede { font-size: .95rem; }
+  .label-card, .result-card, .tracking-card { padding: 20px 16px 18px; margin-bottom: 18px; box-shadow: 3px 3px 0 rgba(33,29,24,.08); }
+  .label-row.two-col { grid-template-columns: 1fr; gap: 14px; }
+  /* >=16px stops iOS Safari zooming the page on focus */
+  input[type="url"], input[type="text"], select { font-size: 1rem; }
+
+  .dispatch-area, .stamp-btn { display: flex; width: 100%; }
+  .stamp-btn { justify-content: center; padding: 14px 20px; }
+
+  .result-url-row { gap: 8px; }
+  .result-short-url { flex: 1 0 100%; font-size: 1.05rem; }
+  .result-url-row .result-copy, .result-url-row .result-open { flex: 1; text-align: center; padding: 9px 10px; }
+  .result-dest { max-width: 100%; }
+  .result-key-row { flex-direction: column; gap: 10px; }
+  .result-key-row .result-copy { width: 100%; padding: 9px 10px; }
+
   .track-form-row { flex-direction: column; }
-  .result-key-row { flex-direction: column; }
+  .track-form-row input { min-width: 0; width: 100%; font-size: 1rem; }
+  .track-form-row button { width: 100%; padding: 12px; }
+  .track-grid { grid-template-columns: repeat(2, 1fr); }
+  .site-footer { padding-bottom: 40px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .stamp-btn, .stamp-seal, .result-card { transition: none !important; animation: none !important; }
+  .stamp-btn, .stamp-seal, .result-card, .dispatch-sheet, .seal-ring,
+  .sheet-progress-fill, .stage-list li::before { transition: none !important; animation: none !important; }
+  .stamp-seal.slam { opacity: 1; }
 }
+
+/* Gentle shake for form validation errors */
+.label-card.shake { animation: formShake .35s ease-in-out; }
+@keyframes formShake { 20% { transform: translateX(-5px); } 45% { transform: translateX(4px); } 70% { transform: translateX(-2px); } }

@@ -51,6 +51,10 @@ public interface UrlMappingRepository extends JpaRepository<UrlMapping, Long> {
     // in Java - matters once a user has more links than fit on one page.
     long countByUser_Id(Long userId);
 
+    // Monthly quota check for subscription plans: links this user created on
+    // or after the start of the current calendar month.
+    long countByUser_IdAndCreatedAtGreaterThanEqual(Long userId, LocalDateTime from);
+
     long countByUser_IdAndExpiresAtBefore(Long userId, LocalDateTime dateTime);
 
     // "Blocked" for the dashboard summary card - links the owner disabled

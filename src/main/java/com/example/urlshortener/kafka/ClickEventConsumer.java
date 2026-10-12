@@ -1,10 +1,12 @@
 package com.example.urlshortener.kafka;
 
 import com.example.urlshortener.entity.UrlClickEvent;
+import com.example.urlshortener.geo.ClickGeoEnricher;
 import com.example.urlshortener.repository.UrlClickEventRepository;
 import com.example.urlshortener.repository.UrlMappingRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
@@ -35,6 +37,10 @@ public class ClickEventConsumer {
     private final UrlMappingRepository urlMappingRepository;
     private final UrlClickEventRepository clickEventRepository;
 
+    // Optional (setter-injected) so the two-arg constructor used by plain unit tests keeps working.
+    @Autowired(required = false)
+    private ClickGeoEnricher geoEnricher;
+
     public ClickEventConsumer(UrlMappingRepository urlMappingRepository,
                                UrlClickEventRepository clickEventRepository) {
         this.urlMappingRepository = urlMappingRepository;
@@ -58,10 +64,16 @@ public class ClickEventConsumer {
             return;
         }
 
-        clickEventRepository.save(UrlClickEvent.builder()
+        UrlClickEvent saved = clickEventRepository.save(UrlClickEvent.builder()
                 .shortCode(message.shortCode())
                 .clickedAt(clickedAt)
                 .ipAddress(message.ipAddress())
+                .referrerHost(message.referrerHost())
+                .referralTag(message.referralTag())
                 .build());
+
+        if (geoEnricher != null && saved != null) {
+            geoEnricher.enrichAfterCommit(saved.getId(), message.shortCode(), message.ipAddress());
+        }
     }
 }

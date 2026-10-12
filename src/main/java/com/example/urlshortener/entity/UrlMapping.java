@@ -61,6 +61,12 @@ public class UrlMapping {
     // such rows simply can't be viewed by key (only by owner, if any).
     private String managementKeyHash;
 
+    // The same key, encrypted (see ManagementKeyVault) - only for links owned by an
+    // account, so the owner can view it again later. Null for anonymous links and
+    // for links created before this existed.
+    @Column(length = 200)
+    private String managementKeyEnc;
+
     // ACTIVE unless the owner disabled it or the Safe Browsing check (at
     // creation or on the scheduled re-check) flagged it. Old rows loaded
     // before this column existed get ACTIVE via the default below, not

@@ -37,4 +37,28 @@ public class User {
 
     @Column(nullable = false)
     private LocalDateTime createdAt;
+
+    // Whether the user has proven they own the email address (emailed code).
+    // Nullable on purpose: accounts that existed before verification was added have
+    // no value, and are treated as verified (see isEmailVerifiedEffective) so nobody
+    // is locked out by the upgrade. New registrations always set this explicitly.
+    private Boolean emailVerified;
+
+    // Nullable on purpose: accounts created before subscriptions existed have
+    // no value here, and ddl-auto=update adds the column without a default.
+    // Always read it through getEffectivePlan(), which maps null -> FREE.
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private SubscriptionPlan plan;
+
+    // When the user's current plan was last changed (null = never changed).
+    private LocalDateTime planChangedAt;
+
+    public boolean isEmailVerifiedEffective() {
+        return emailVerified == null || emailVerified;
+    }
+
+    public SubscriptionPlan getEffectivePlan() {
+        return plan == null ? SubscriptionPlan.FREE : plan;
+    }
 }

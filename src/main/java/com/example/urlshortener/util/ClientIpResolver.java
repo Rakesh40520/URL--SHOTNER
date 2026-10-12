@@ -28,6 +28,29 @@ public class ClientIpResolver {
     @Value("${app.trust-proxy-headers:false}")
     private boolean trustProxyHeaders;
 
+    // Separate, narrower switch used ONLY for recording where a click came from
+    // (see resolveForAnalytics). Behind a platform proxy like Render, the socket
+    // address is the proxy's private IP, so location would always be "unknown".
+    // Unlike trust-proxy-headers, a spoofed value here can only mislabel that one
+    // click's location - it can't be used to dodge the rate limiter.
+    @Value("${app.geo.trust-forwarded-for:false}")
+    private boolean geoTrustForwardedFor;
+
+    /**
+     * IP to store on a click and geolocate. Same as resolve() unless
+     * app.geo.trust-forwarded-for is true, in which case the first
+     * X-Forwarded-For entry is used. Rate limiting always uses resolve().
+     */
+    public String resolveForAnalytics(HttpServletRequest request) {
+        if (geoTrustForwardedFor && !trustProxyHeaders) {
+            String forwardedFor = request.getHeader("X-Forwarded-For");
+            if (forwardedFor != null && !forwardedFor.isBlank()) {
+                return forwardedFor.split(",")[0].trim();
+            }
+        }
+        return resolve(request);
+    }
+
     public String resolve(HttpServletRequest request) {
         if (trustProxyHeaders) {
             String forwardedFor = request.getHeader("X-Forwarded-For");

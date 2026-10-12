@@ -4,7 +4,7 @@
  * Call Nav.render() after the DOM is ready (or at the end of <body>).
  * It reads Auth.isLoggedIn() to decide which links to show.
  *
- * Anonymous nav:  Logo | Home | Session History   Login  Register
+ * Anonymous nav:  Logo | Home | Link History   Login  Register
  * Auth nav:       Logo | Home | My Dispatches     [name] Logout
  */
 
@@ -26,12 +26,19 @@ const Nav = (() => {
           <span>DISPATCH</span>
         </a>
 
+        <button class="nav-toggle" id="nav-toggle" type="button" aria-label="Toggle menu" aria-expanded="false" aria-controls="nav-menu">
+          <svg class="icon-open" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          <svg class="icon-close" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+
+        <div class="nav-menu" id="nav-menu">
         <nav class="nav-links" aria-label="Primary navigation">
           <a href="/index.html" class="nav-link ${isActive('index')}">Home</a>
           ${loggedIn
             ? `<a href="/dashboard.html" class="nav-link ${isActive('dashboard')}">My Dispatches</a>`
-            : `<a href="/history.html" class="nav-link ${isActive('history')}">Session History</a>`
+            : `<a href="/history.html" class="nav-link ${isActive('history')}">Link History</a>`
           }
+          <a href="/pricing.html" class="nav-link ${isActive('pricing')}">Pricing</a>
         </nav>
 
         <div class="nav-actions">
@@ -49,17 +56,29 @@ const Nav = (() => {
             <a href="/register.html" class="nav-btn nav-register ${isActive('register')}">Register</a>
           `}
         </div>
+        </div>
       </div>
     `;
+
+    // Mobile menu: toggle, close on link tap / outside tap / Escape
+    const toggle = document.getElementById('nav-toggle');
+    const menu   = document.getElementById('nav-menu');
+    const setOpen = open => {
+      menu.classList.toggle('open', open);
+      toggle.setAttribute('aria-expanded', String(open));
+    };
+    toggle.addEventListener('click', () => setOpen(!menu.classList.contains('open')));
+    menu.addEventListener('click', e => { if (e.target.closest('a')) setOpen(false); });
+    document.addEventListener('click', e => { if (!el.contains(e.target)) setOpen(false); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') setOpen(false); });
 
     // Wire logout
     const logoutBtn = document.getElementById('logout-btn');
     if (logoutBtn) {
       logoutBtn.addEventListener('click', () => {
         Auth.clear();
-        // session history lives in sessionStorage which persists through
-        // logout (it's browser-session-scoped, not account-scoped), so we
-        // don't touch it here per the spec.
+        // Link history lives in this browser's localStorage (device-scoped, not
+        // account-scoped), so logging out deliberately leaves it alone.
         window.location.href = '/index.html';
       });
     }

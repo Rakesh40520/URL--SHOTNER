@@ -61,7 +61,9 @@ public class SecurityConfig {
                 .headers(headers -> headers.frameOptions(HeadersConfigurer.FrameOptionsConfig::disable))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll() // CORS preflight
-                        .requestMatchers(HttpMethod.GET, "/api/v1/urls/my", "/api/v1/urls/my/summary").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/urls/my", "/api/v1/urls/my/summary", "/api/v1/urls/my/export").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/subscription").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/subscription").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/logout").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/v1/urls/**").authenticated()
                         // Everything else - shortening, redirects, stats,

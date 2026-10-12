@@ -3,11 +3,12 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Session History — Dispatch</title>
+<title>Link History — Dispatch</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Special+Elite&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/nav.css"/>
 <link rel="stylesheet" href="css/dashboard.css"/>
+<link rel="stylesheet" href="css/features.css"/>
 </head>
 <body>
 
@@ -16,11 +17,11 @@
 <main class="dash-page wrap">
 
   <div class="dash-header">
-    <p class="dash-eyebrow">Browser session only</p>
-    <h1 class="dash-title">Session History</h1>
+    <p class="dash-eyebrow">Saved on this device</p>
+    <h1 class="dash-title">Link History</h1>
     <p class="dash-sub">
-      URLs you've created during this browser session — stored only in this tab, never on the server.
-      Closing or refreshing the tab will clear this list.
+      Links you've created in this browser, with their management keys — saved on this device only, never on the server.
+      Clearing your browser data removes the list, so keep a copy of any key you can't afford to lose.
       <span id="auth-note" hidden>
         Want permanent history?
         <a href="/dashboard.html">Go to My Dispatches →</a>
@@ -33,6 +34,10 @@
 </main>
 
 <script src="js/auth.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/vendor/qrcode.js"></script>
+<script src="js/qr.js"></script>
+<script src="js/plans.js"></script>
 <script src="js/nav.js"></script>
 <script>
   Nav.render();
@@ -42,16 +47,8 @@
     document.getElementById('auth-note').hidden = false;
   }
 
-  const SESSION_KEY = 'dispatch_session_history';
-
-  function getHistory() {
-    try { return JSON.parse(sessionStorage.getItem(SESSION_KEY) || '[]'); }
-    catch { return []; }
-  }
-
-  function saveHistory(urls) {
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify(urls));
-  }
+  function getHistory() { return UI.history.get(); }
+  function saveHistory(urls) { UI.history.set(urls); }
 
   function fmt(iso) {
     if (!iso) return '—';
@@ -67,6 +64,30 @@
     return new Date(u.expiresAt) < new Date() ? 'Expired' : 'Active';
   }
 
+
+  // ── Copy handling ──────────────────────────────────────────────
+  // One delegated listener on the wrapper (not per-row listeners), so it
+  // keeps working after every re-render, pagination or delete.
+  // Clicking a short code copies the full short link.
+  document.getElementById('history-wrap').addEventListener('click', async e => {
+    const qrBtn = e.target.closest('.qr-btn');
+    if (qrBtn) { QR.open({ url: qrBtn.dataset.url, code: qrBtn.dataset.code }); return; }
+    const chip = e.target.closest('.short-code-chip');
+    const btn  = e.target.closest('.copy-btn');
+    const key  = e.target.closest('.key-code');
+    const el   = chip || btn || key;
+    if (!el) return;
+
+    const text = key ? key.dataset.key : UI.shortUrlForCopy(el.dataset.url || el.dataset.code);
+    const ok = await UI.copyText(text);
+    if (!ok) { UI.toast('Could not copy — please copy it manually', { type: 'error' }); return; }
+
+    if (chip)      UI.flash(chip, chip.querySelector('.copy-hint'), '✓ copied');
+    else if (btn)  UI.flash(btn,  btn.querySelector('.btn-label'), 'Copied');
+    else           UI.flash(key,  key, 'Copied ✓');
+    UI.toast(key ? 'Management key copied' : 'Copied ' + text.replace(/^https?:\/\//, ''));
+  });
+
   function render() {
     const urls = getHistory();
     const wrap = document.getElementById('history-wrap');
@@ -77,8 +98,8 @@
           <div class="dash-empty-icon">
             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
           </div>
-          <h3>No URLs dispatched in this session.</h3>
-          <p>URLs you create on the home page will appear here until you close this tab.</p>
+          <h3>No links saved on this device yet.</h3>
+          <p>Links you create on the home page appear here, with their management keys, until you clear them.</p>
           <a href="/index.html">Create Short URL</a>
         </div>`;
       return;
@@ -102,21 +123,21 @@
             ${urls.map((u, i) => `
               <tr data-idx="${i}">
                 <td class="td-url" title="${esc(u.longUrl)}">${esc(u.longUrl)}</td>
-                <td class="td-short">
+                <td class="td-short" data-label="Short code">
                   <button class="short-code-chip" data-code="${esc(u.shortCode)}" data-url="${esc(u.shortUrl)}" title="Click to copy short link">
                     <span class="code-txt">${esc(u.shortCode)}</span>
                     <span class="copy-hint" aria-hidden="true">copy</span>
                   </button>
                 </td>
-                <td class="td-key">
+                <td class="td-key" data-label="Key">
                   ${u.managementKey
                     ? `<code class="key-code" data-key="${esc(u.managementKey)}" title="Click to copy">${esc(u.managementKey)}</code>`
                     : `<span class="td-key-missing">—</span>`}
                 </td>
-                <td>${fmt(u.createdAt)}</td>
-                <td>${u.expiresAt ? fmt(u.expiresAt) : 'Never'}</td>
-                <td><span class="badge badge-${statusOf(u) === 'Active' ? 'active' : 'expired'}">${statusOf(u)}</span></td>
-                <td class="td-actions">
+                <td data-label="Created">${fmt(u.createdAt)}</td>
+                <td data-label="Expires">${u.expiresAt ? fmt(u.expiresAt) : 'Never'}</td>
+                <td data-label="Status"><span class="badge badge-${statusOf(u) === 'Active' ? 'active' : 'expired'}">${statusOf(u)}</span></td>
+                <td class="td-actions" data-label="">
                   ${u.managementKey ? `
                   <button class="action-btn track-row-btn" data-code="${esc(u.shortCode)}" data-key="${esc(u.managementKey)}" title="Track this parcel">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -124,13 +145,17 @@
                   </button>` : ''}
                   <button class="action-btn copy-btn" data-url="${esc(u.shortUrl)}" title="Copy short URL">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                    Copy
+                    <span class="btn-label">Copy</span>
+                  </button>
+                  <button class="action-btn qr-btn" data-url="${esc(u.shortUrl)}" data-code="${esc(u.shortCode)}" title="Make a QR code">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3zM20 14v1M14 20h1M18 18h3v3h-3z"/></svg>
+                    <span class="btn-label">QR</span>
                   </button>
                   <a class="action-btn" href="${esc(u.shortUrl)}" target="_blank" rel="noopener">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                     Open
                   </a>
-                  <button class="action-btn del remove-btn" data-idx="${i}" title="Remove from session">
+                  <button class="action-btn del remove-btn" data-idx="${i}" title="Remove from this device's history">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                     Remove
                   </button>
@@ -139,18 +164,14 @@
             `).join('')}
           </tbody>
         </table>
-      </div>`;
+      </div>
+      <p class="history-foot">
+        <button type="button" class="action-btn del" id="clear-all">Clear all history</button>
+        <span>Removes this list and the saved keys from this device. Links themselves stay live.</span>
+      </p>`;
 
-    document.querySelectorAll('.key-code').forEach(el => {
-      el.addEventListener('click', async () => {
-        try {
-          await navigator.clipboard.writeText(el.dataset.key);
-          const original = el.textContent;
-          el.textContent = 'Copied ✓';
-          el.classList.add('copied');
-          setTimeout(() => { el.textContent = original; el.classList.remove('copied'); }, 1400);
-        } catch {}
-      });
+    document.getElementById('clear-all').addEventListener('click', () => {
+      if (confirm('Clear all saved links and management keys from this device?')) { UI.history.clear(); render(); }
     });
 
     document.querySelectorAll('.track-row-btn').forEach(btn => {
@@ -159,32 +180,6 @@
         // auto-run — see the autoTrackFromLink() handler in app.js.
         const params = new URLSearchParams({ trackCode: btn.dataset.code, trackKey: btn.dataset.key });
         window.location.href = `/index.html?${params.toString()}`;
-      });
-    });
-
-    document.querySelectorAll('.short-code-chip').forEach(chip => {
-      chip.addEventListener('click', async () => {
-        try {
-          await navigator.clipboard.writeText(chip.dataset.url || chip.dataset.code);
-          const origContent = chip.innerHTML;
-          chip.innerHTML = '<span class="code-txt" style="color:var(--success,#2D6A4F)">✓ Copied!</span>';
-          chip.classList.add('copied');
-          setTimeout(() => {
-            chip.innerHTML = origContent;
-            chip.classList.remove('copied');
-          }, 1400);
-        } catch {}
-      });
-    });
-
-    document.querySelectorAll('.copy-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        try {
-          await navigator.clipboard.writeText(btn.dataset.url);
-          btn.textContent = '✓ Copied';
-          btn.classList.add('copied');
-          setTimeout(() => { btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy`; btn.classList.remove('copied'); }, 1800);
-        } catch {}
       });
     });
 

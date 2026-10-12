@@ -41,6 +41,8 @@
       <input type="password" id="password" name="password" placeholder="••••••••" autocomplete="current-password" required/>
     </div>
 
+    <p class="auth-forgot"><a href="/forgot-password.html" id="forgot-link">Forgot password?</a></p>
+
     <button class="auth-submit" id="login-btn" type="button">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
       <span id="btn-label">Log In</span>
@@ -69,6 +71,17 @@
     alertEl.textContent = 'Your session has expired. Please log in again.';
     alertEl.hidden = false;
   }
+  if (new URLSearchParams(window.location.search).get('notice') === 'reset') {
+    alertEl.textContent = 'Password updated. Log in with your new password.';
+    alertEl.classList.add('success');
+    alertEl.hidden = false;
+  }
+
+  // Carry a typed email over to the reset page.
+  document.getElementById('forgot-link').addEventListener('click', e => {
+    const typed = document.getElementById('email').value.trim();
+    if (typed) e.currentTarget.href = '/forgot-password.html?email=' + encodeURIComponent(typed);
+  });
 
   document.getElementById('login-btn').addEventListener('click', async () => {
     const email    = document.getElementById('email').value.trim();
@@ -93,7 +106,13 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+
+      // Correct password but the email isn't verified yet: continue on the code page.
+      if (res.status === 403 && data.code === 'EMAIL_NOT_VERIFIED') {
+        window.location.href = '/verify-email.html?sent=0&email=' + encodeURIComponent(data.email || email);
+        return;
+      }
       if (!res.ok) throw new Error(data.message || 'Login failed.');
 
       Auth.save({ token: data.token, name: data.name, email: data.email });

@@ -2,7 +2,7 @@
 
 body { background: var(--kraft); }
 
-.dash-page { padding: 40px 0 80px; }
+.dash-page { padding-top: 40px; padding-bottom: 80px; min-height: calc(100vh - 56px); } /* keep .wrap's side padding */
 
 .dash-header { margin-bottom: 32px; }
 .dash-eyebrow {
@@ -23,7 +23,7 @@ body { background: var(--kraft); }
 /* ── Summary cards ── */
 .dash-stats {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 14px;
   margin-bottom: 32px;
 }
@@ -129,17 +129,23 @@ body { background: var(--kraft); }
   background: #edf7f6;
   transform: translateY(-1px);
 }
+.short-code-chip:active { transform: translateY(0) scale(.97); }
 .short-code-chip .copy-hint {
   font-size: 0.62rem;
   text-transform: uppercase;
   color: var(--ink-soft);
   opacity: 0.7;
+  min-width: 5.2em;           /* keeps the chip from jumping when it flips to "✓ copied" */
+  text-align: left;
 }
+.short-code-chip.copied .copy-hint { color: var(--success); opacity: 1; font-weight: 600; }
 .short-code-chip.copied {
   border-color: var(--success, #2D6A4F);
   border-style: solid;
   background: #eaf7ef;
+  animation: copyPop .28s ease-out;
 }
+@keyframes copyPop { 50% { transform: scale(1.06); } }
 
 .action-btn.track-btn {
   color: var(--teal);
@@ -215,7 +221,7 @@ body { background: var(--kraft); }
 .action-btn:hover { border-color: var(--ink); color: var(--ink); background: var(--kraft); }
 .action-btn.del { color: #a32222; border-color: rgba(163, 34, 34, 0.35); }
 .action-btn.del:hover { border-color: #a32222; color: #fff; background: #a32222; }
-.action-btn.copied { border-color: var(--teal); color: var(--teal); }
+.action-btn.copied { border-color: var(--success); color: var(--success); background: #eaf7ef; }
 
 /* ── Empty state ── */
 .dash-empty {
@@ -251,25 +257,102 @@ body { background: var(--kraft); }
   background-size: 200% 100%; animation: shimmer 1.2s infinite; height: 44px; }
 @keyframes shimmer { to { background-position: -200% 0; } }
 
-@media (max-width: 720px) {
-  .dash-stats { grid-template-columns: repeat(2, 1fr); }
-
-  /* dashboard.html table: Original URL | Short Code | Created | Clicks | Status | Actions
-     Hide Created + Clicks on small screens, keep everything else. */
-  .dash-table:not(.history-table) th:nth-child(3),
-  .dash-table:not(.history-table) td:nth-child(3),
-  .dash-table:not(.history-table) th:nth-child(4),
-  .dash-table:not(.history-table) td:nth-child(4) { display: none; }
-
-  /* history.html table: Original URL | Short URL | Key | Created | Expires | Status | Actions
-     Hide Created + Expires instead - the Key column is the whole point of
-     this page's "make it visible" fix, so it must NOT be hidden on mobile. */
-  .history-table th:nth-child(4),
-  .history-table td:nth-child(4),
-  .history-table th:nth-child(5),
-  .history-table td:nth-child(5) { display: none; }
+/* ── Desktop table polish ── */
+.short-code-chip { white-space: nowrap; }
+.dash-table td[data-label="Created"], .dash-table td[data-label="Expires"] { white-space: nowrap; }
+@media (min-width: 961px) {
+  /* Icon-only actions in table mode (text stays for screen readers + tooltips),
+     so five actions fit the 900px container without sideways scrolling. */
+  .dash-table .action-btn { font-size: 0; gap: 0; padding: 7px 7px; }
+  .dash-table .action-btn .btn-label { display: none; }
+  .dash-table .action-btn svg { width: 15px; height: 15px; }
+  .dash-table { min-width: 0; }
+  .dash-table th, .dash-table td { padding-left: 12px; padding-right: 12px; }
+  /* Up to 7 icon buttons: wrap to a second row instead of widening the table. */
+  .dash-table .td-actions { min-width: 0; max-width: 168px; white-space: normal; padding-right: 12px; line-height: 0; }
+  .dash-table .td-actions .action-btn { margin: 2px 3px 2px 0; vertical-align: top; }
+  .dash-table .td-url { max-width: 140px; }
+  .dash-table th, .dash-table td { padding-left: 10px; padding-right: 10px; }
 }
-@media (max-width: 500px) {
-  .dash-stats { grid-template-columns: 1fr 1fr; }
-  .dash-title { font-size: 1.5rem; }
+
+/* ── Responsive ──────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .dash-stats { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* Phones / small tablets: each table row becomes a card, so nothing is hidden
+   and nothing needs sideways scrolling. Labels come from each cell's data-label. */
+@media (max-width: 960px) {
+  .dash-page { padding-top: 24px; padding-bottom: 56px; }
+  .dash-title { font-size: 1.6rem; }
+  .dash-stats { grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 22px; }
+  .stat-card { padding: 12px 14px; }
+  .stat-value { font-size: 1.5rem; }
+  .stat-card:last-child:nth-child(odd) { grid-column: 1 / -1; }
+
+  .dash-table-wrap { background: transparent; border: 0; box-shadow: none; overflow: visible; }
+  .dash-table { min-width: 0; display: block; }
+  .dash-table thead { display: none; }
+  .dash-table tbody { display: grid; gap: 12px; }
+
+  .dash-table tbody tr {
+    display: grid; grid-template-columns: 1fr auto; gap: 10px 12px; align-items: center;
+    background: var(--paper);
+    border: 1.5px solid var(--ink);
+    border-radius: var(--radius);
+    box-shadow: 3px 3px 0 rgba(33,29,24,0.07);
+    padding: 14px;
+  }
+  .dash-table tr:hover td { background: none; }
+  .dash-table td { display: block; padding: 0; border: 0; min-width: 0; }
+
+  /* URL + short code on top, full width / left-right */
+  .dash-table .td-url { grid-column: 1 / -1; max-width: none; font-size: .78rem; }
+  .dash-table .td-short { grid-column: 1; }
+  .dash-table td[data-label="Status"] { grid-column: 2; grid-row: 2; justify-self: end; }
+  .dash-table td[data-label="Clicks"] { grid-column: 2; justify-self: end; align-items: flex-end; }
+
+  /* Secondary facts as small label/value pairs */
+  .dash-table td[data-label="Created"],
+  .dash-table td[data-label="Clicks"],
+  .dash-table td[data-label="Expires"] {
+    display: flex; flex-direction: column; gap: 2px;
+    font-family: var(--font-mono); font-size: .82rem;
+  }
+  .dash-table td[data-label="Created"]::before,
+  .dash-table td[data-label="Clicks"]::before,
+  .dash-table td[data-label="Expires"]::before {
+    content: attr(data-label);
+    font-size: .6rem; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-soft);
+  }
+
+  /* Actions: a tidy wrapped row of comfortable touch targets */
+  .dash-table .td-actions {
+    grid-column: 1 / -1; min-width: 0; white-space: normal; padding: 10px 0 0;
+    border-top: 1px dashed var(--line);
+    display: flex; flex-wrap: wrap; gap: 8px;
+  }
+  .action-btn { margin: 0; padding: 8px 12px; min-height: 36px; font-size: .76rem; }
+
+  /* Session-history extras */
+  .history-table .td-key { grid-column: 1 / -1; max-width: none; }
+  .history-table .td-key::before {
+    content: 'Management key'; display: block; margin-bottom: 4px;
+    font-family: var(--font-mono); font-size: .6rem; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--ink-soft);
+  }
+  .history-table .td-key-missing::after { content: ' none saved'; }
+
+  /* Loading skeletons become card-shaped */
+  .dash-table .loading-row { display: block; padding: 0; border: 0; box-shadow: none; background: none; }
+  .dash-table .loading-row td { height: 108px; border-radius: var(--radius); }
+
+  .dash-pager { gap: 10px; }
+}
+@media (max-width: 380px) {
+  .dash-table .td-actions .action-btn { flex: 1 1 calc(50% - 8px); justify-content: center; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .short-code-chip, .short-code-chip.copied { animation: none; transition: none; }
+  .loading-row td { animation: none; }
 }

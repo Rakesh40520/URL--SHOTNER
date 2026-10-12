@@ -49,4 +49,20 @@ class ClientIpResolverTest {
 
         assertEquals("203.0.113.5", resolver.resolve(request));
     }
+
+    @Test
+    void resolveForAnalytics_usesForwardedHeaderOnlyWhenGeoFlagIsOn_andNeverChangesRateLimitIp() {
+        ClientIpResolver resolver = resolverWithTrustProxyHeaders(false);
+        HttpServletRequest request = mock(HttpServletRequest.class);
+        when(request.getHeader("X-Forwarded-For")).thenReturn("198.51.100.7, 10.0.0.2");
+        when(request.getRemoteAddr()).thenReturn("10.0.0.2");
+
+        // flag off (default): analytics IP == socket IP
+        assertEquals("10.0.0.2", resolver.resolveForAnalytics(request));
+
+        ReflectionTestUtils.setField(resolver, "geoTrustForwardedFor", true);
+        assertEquals("198.51.100.7", resolver.resolveForAnalytics(request));
+        // ...but the rate-limiter IP is untouched
+        assertEquals("10.0.0.2", resolver.resolve(request));
+    }
 }

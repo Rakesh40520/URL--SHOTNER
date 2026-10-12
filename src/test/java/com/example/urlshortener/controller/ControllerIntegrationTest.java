@@ -1,12 +1,18 @@
 package com.example.urlshortener.controller;
 
 import com.example.urlshortener.entity.User;
+import com.example.urlshortener.mail.EmailSender;
 import com.example.urlshortener.repository.UrlClickEventRepository;
 import com.example.urlshortener.repository.UrlMappingRepository;
 import com.example.urlshortener.repository.UserRepository;
 import com.example.urlshortener.security.JwtService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
+import org.mockito.ArgumentCaptor;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -41,6 +47,8 @@ class ControllerIntegrationTest {
     @Autowired private UrlClickEventRepository urlClickEventRepository;
     @Autowired private PasswordEncoder passwordEncoder;
     @Autowired private JwtService jwtService;
+    // Replaces the real sender so tests can read the emailed code without sending anything.
+    @MockBean private EmailSender emailSender;
 
     private static final String EMAIL    = "ada@example.com";
     private static final String PASSWORD = "password123";
@@ -63,7 +71,7 @@ class ControllerIntegrationTest {
     // ── Registration ─────────────────────────────────────────────────────────
 
     @Test
-    void register_validRequest_returns201WithToken() throws Exception {
+    void register_validRequest_returns201_withNoToken_andEmailsACode() throws Exception {
         Map<String, String> body = Map.of(
                 "name", "Grace", "email", "grace@example.com",
                 "password", "password123", "confirmPassword", "password123");
@@ -72,9 +80,126 @@ class ControllerIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(body)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.token").isNotEmpty())
+                .andExpect(jsonPath("$.verificationRequired").value(true))
                 .andExpect(jsonPath("$.email").value("grace@example.com"))
-                .andExpect(jsonPath("$.name").value("Grace"));
+                .andExpect(jsonPath("$.token").doesNotExist());
+
+        org.junit.jupiter.api.Assertions.assertEquals(Boolean.FALSE,
+                userRepository.findByEmail("grace@example.com").orElseThrow().getEmailVerified());
+        emailedCode();   // an email with a 6-digit code was sent
+    }
+
+    @Test
+    void fullSignupFlow_loginBlockedUntilCodeVerified() throws Exception {
+        register("grace@example.com");
+        String code = emailedCode();
+
+        // Right password, but not verified yet -> 403 EMAIL_NOT_VERIFIED
+        login("grace@example.com", "password123")
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("EMAIL_NOT_VERIFIED"))
+                .andExpect(jsonPath("$.token").doesNotExist());
+
+        // Wrong code -> 400 with attempts left, still blocked
+        String wrong = code.equals("000000") ? "111111" : "000000";
+        verifyEmail("grace@example.com", wrong)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_CODE"))
+                .andExpect(jsonPath("$.attemptsLeft").value(4));
+
+        // Right code -> verified and logged in
+        verifyEmail("grace@example.com", code)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.token").isNotEmpty());
+
+        // Now a normal login works, and the code can't be replayed
+        login("grace@example.com", "password123").andExpect(status().isOk());
+        verifyEmail("grace@example.com", code).andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void resendCode_rightAfterRegistering_isRateLimited() throws Exception {
+        register("grace@example.com");
+
+        mvc.perform(post("/api/v1/auth/resend-code").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"grace@example.com\"}"))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.code").value("CODE_RATE_LIMITED"))
+                .andExpect(header().exists("Retry-After"));
+    }
+
+    @Test
+    void forgotAndResetPassword_flow() throws Exception {
+        mvc.perform(post("/api/v1/auth/forgot-password").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"" + EMAIL + "\"}"))
+                .andExpect(status().isOk());
+        String code = emailedCode();
+
+        mvc.perform(post("/api/v1/auth/reset-password").contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of("email", EMAIL, "code", code,
+                                "newPassword", "a-brand-new-pass", "confirmPassword", "a-brand-new-pass"))))
+                .andExpect(status().isOk());
+
+        login(EMAIL, "a-brand-new-pass").andExpect(status().isOk());
+        login(EMAIL, PASSWORD).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void forgotPassword_unknownEmail_getsTheSameAnswer_andNothingIsSent() throws Exception {
+        mvc.perform(post("/api/v1/auth/forgot-password").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"nobody@example.com\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").isNotEmpty());
+        verify(emailSender, never()).send(anyString(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void resetPassword_withWrongCode_isRejected_andPasswordUnchanged() throws Exception {
+        mvc.perform(post("/api/v1/auth/forgot-password").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"email\":\"" + EMAIL + "\"}"));
+        String code = emailedCode();
+        String wrong = code.equals("000000") ? "111111" : "000000";
+
+        mvc.perform(post("/api/v1/auth/reset-password").contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of("email", EMAIL, "code", wrong,
+                                "newPassword", "a-brand-new-pass", "confirmPassword", "a-brand-new-pass"))))
+                .andExpect(status().isBadRequest());
+
+        login(EMAIL, PASSWORD).andExpect(status().isOk());
+    }
+
+    @Test
+    void existingAccountsFromBeforeVerificationExisted_canStillLogIn() throws Exception {
+        // The seeded user has no emailVerified value at all, like every pre-existing account.
+        org.junit.jupiter.api.Assertions.assertNull(savedUser.getEmailVerified());
+        login(EMAIL, PASSWORD).andExpect(status().isOk());
+    }
+
+    // helpers for the flows above
+    private void register(String email) throws Exception {
+        mvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of("name", "Grace", "email", email,
+                                "password", "password123", "confirmPassword", "password123"))))
+                .andExpect(status().isCreated());
+    }
+
+    private org.springframework.test.web.servlet.ResultActions login(String email, String password) throws Exception {
+        return mvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(Map.of("email", email, "password", password))));
+    }
+
+    private org.springframework.test.web.servlet.ResultActions verifyEmail(String email, String code) throws Exception {
+        return mvc.perform(post("/api/v1/auth/verify-email").contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(Map.of("email", email, "code", code))));
+    }
+
+    /** Reads the 6-digit code out of the most recent email handed to the (mocked) sender. */
+    private String emailedCode() {
+        ArgumentCaptor<String> text = ArgumentCaptor.forClass(String.class);
+        verify(emailSender, org.mockito.Mockito.atLeastOnce()).send(anyString(), anyString(), anyString(), text.capture());
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("\\b(\\d{6})\\b").matcher(text.getValue());
+        org.junit.jupiter.api.Assertions.assertTrue(m.find(), "emailed text should contain a 6-digit code: " + text.getValue());
+        return m.group(1);
     }
 
     @Test
@@ -163,6 +288,126 @@ class ControllerIntegrationTest {
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content").isArray());
+    }
+
+    // ── Click location / referrer analytics ──────────────────────────────────
+
+    @Test
+    void redirect_recordsReferrerHostAndRefTag_andAnalyticsAggregatesThem() throws Exception {
+        String token = jwtService.generateToken(savedUser);
+        String created = mvc.perform(post("/api/v1/urls").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"longUrl\":\"https://example.com\",\"expiresInDays\":7}"))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        String code = mapper.readTree(created).get("shortCode").asText();
+
+        mvc.perform(get("/" + code).header("Referer", "https://www.twitter.com/x/status/1?t=secret").param("ref", "alice"))
+                .andExpect(status().isFound());
+        mvc.perform(get("/" + code).param("ref", "qr")).andExpect(status().isFound());
+        mvc.perform(get("/" + code)).andExpect(status().isFound());
+
+        mvc.perform(get("/api/v1/urls/" + code + "/analytics").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalClicks").value(3))
+                .andExpect(jsonPath("$.topSources[?(@.label=='twitter.com')].count").value(1))
+                .andExpect(jsonPath("$.topSources[?(@.label=='Direct / unknown')].count").value(2))
+                .andExpect(jsonPath("$.topReferralTags[?(@.label=='alice')].count").value(1))
+                .andExpect(jsonPath("$.topReferralTags[?(@.label=='qr')].count").value(1));
+    }
+
+    @Test
+    void analytics_withoutOwnerOrKey_isForbidden() throws Exception {
+        String created = mvc.perform(post("/api/v1/urls").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"longUrl\":\"https://example.com\"}"))
+                .andReturn().getResponse().getContentAsString();
+        String code = mapper.readTree(created).get("shortCode").asText();
+
+        mvc.perform(get("/api/v1/urls/" + code + "/analytics")).andExpect(status().isForbidden());
+    }
+
+    // ── Stored management keys ───────────────────────────────────────────────
+
+    @Test
+    void ownedLink_keyIsStoredEncrypted_andReturnedInMyList() throws Exception {
+        String token = jwtService.generateToken(savedUser);
+        String created = mvc.perform(post("/api/v1/urls").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"longUrl\":\"https://example.com\",\"expiresInDays\":7}"))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        String key = mapper.readTree(created).get("managementKey").asText();
+
+        mvc.perform(get("/api/v1/urls/my").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].managementKey").value(key));
+    }
+
+    @Test
+    void anonymousLink_keyIsNeverStoredOnTheServer() throws Exception {
+        mvc.perform(post("/api/v1/urls").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"longUrl\":\"https://example.com\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.managementKey").isNotEmpty());
+        // nothing in any owner's list - there is no owner, so there is nowhere the key could be read back
+        org.junit.jupiter.api.Assertions.assertTrue(
+                urlMappingRepository.findAll().stream().allMatch(m -> m.getUser() != null
+                        || m.getManagementKeyEnc() == null));
+    }
+
+    // ── Subscription plans ───────────────────────────────────────────────────
+
+    @Test
+    void plans_isPublic_andListsAllThreeTiers() throws Exception {
+        mvc.perform(get("/api/v1/plans"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(3))
+                .andExpect(jsonPath("$[0].key").value("FREE"))
+                .andExpect(jsonPath("$[1].key").value("PRO"));
+    }
+
+    @Test
+    void subscription_requiresLogin() throws Exception {
+        mvc.perform(get("/api/v1/subscription")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void subscription_defaultsToFree_andUpgradeUnlocksCustomAlias() throws Exception {
+        String token = jwtService.generateToken(savedUser);
+        Map<String, Object> body = Map.of("longUrl", "https://example.com", "customAlias", "pro-alias", "expiresInDays", 7);
+
+        mvc.perform(get("/api/v1/subscription").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.plan.key").value("FREE"));
+
+        mvc.perform(post("/api/v1/urls").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsString(body)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("PLAN_FEATURE_LOCKED"))
+                .andExpect(jsonPath("$.requiredPlan").value("PRO"));
+
+        mvc.perform(post("/api/v1/subscription").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"plan\":\"PRO\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.plan.key").value("PRO"));
+
+        mvc.perform(post("/api/v1/urls").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsString(body)))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
+    void csvExport_isLockedOnFree_andAvailableOnPro() throws Exception {
+        String token = jwtService.generateToken(savedUser);
+
+        mvc.perform(get("/api/v1/urls/my/export").header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("PLAN_FEATURE_LOCKED"));
+
+        savedUser.setPlan(com.example.urlshortener.entity.SubscriptionPlan.PRO);
+        userRepository.save(savedUser);
+
+        mvc.perform(get("/api/v1/urls/my/export").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.containsString("my-dispatches.csv")));
     }
 
     // ── URL ownership ─────────────────────────────────────────────────────────

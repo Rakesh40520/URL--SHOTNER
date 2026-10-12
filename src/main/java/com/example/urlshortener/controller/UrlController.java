@@ -1,6 +1,8 @@
 package com.example.urlshortener.controller;
 
+import com.example.urlshortener.dto.ClickAnalyticsResponse;
 import com.example.urlshortener.dto.ClickResponse;
+import com.example.urlshortener.dto.ClickSource;
 import com.example.urlshortener.dto.ReportRequest;
 import com.example.urlshortener.dto.ReportResponse;
 import com.example.urlshortener.dto.ShortenRequest;
@@ -9,6 +11,7 @@ import com.example.urlshortener.dto.UrlDashboardSummaryResponse;
 import com.example.urlshortener.dto.UrlStatsResponse;
 import com.example.urlshortener.dto.UrlSummaryResponse;
 import com.example.urlshortener.entity.User;
+import com.example.urlshortener.service.SubscriptionService;
 import com.example.urlshortener.service.UrlShortenerService;
 import com.example.urlshortener.util.ClientIpResolver;
 import io.swagger.v3.oas.annotations.Operation;
@@ -34,6 +37,7 @@ import java.net.URI;
 public class UrlController {
 
     private final UrlShortenerService service;
+    private final SubscriptionService subscriptionService;
     private final ClientIpResolver clientIpResolver;
 
     @Operation(summary = "Create a short URL for a given long URL (works anonymously or logged in)")
@@ -55,6 +59,10 @@ public class UrlController {
         // permitAll - see SecurityConfig) and the User resolved from the
         // JWT for a logged-in one. Either way the service decides what to
         // do with it; the controller never invents ownership on its own.
+        // Enforce the signed-in user's subscription plan first (quota, custom
+        // alias, max expiry). No-op for anonymous callers.
+        subscriptionService.applyPlanRules(request, currentUser);
+
         ShortenResponse response = service.shorten(request, baseUrl, currentUser);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
@@ -105,6 +113,14 @@ public class UrlController {
                                                         @AuthenticationPrincipal User currentUser,
                                                         @PageableDefault(size = 20) Pageable pageable) {
         return ResponseEntity.ok(service.getClicks(shortCode, pageable, managementKey, currentUser));
+    }
+
+    @Operation(summary = "Where a link's clicks come from (country/city) and who sent them (referrer, ?ref= tag) - requires management key or ownership")
+    @GetMapping("/api/v1/urls/{shortCode}/analytics")
+    public ResponseEntity<ClickAnalyticsResponse> analytics(@PathVariable String shortCode,
+                                                              @RequestHeader(name = "X-Management-Key", required = false) String managementKey,
+                                                              @AuthenticationPrincipal User currentUser) {
+        return ResponseEntity.ok(service.getClickAnalytics(shortCode, managementKey, currentUser));
     }
 
     @Operation(summary = "Report a short URL as abusive/malicious (no account needed)")
@@ -159,9 +175,14 @@ public class UrlController {
      */
     @Operation(summary = "Redirect a short code to its original long URL")
     @GetMapping("/{shortCode:[a-zA-Z0-9_-]{3,20}}")
-    public ResponseEntity<Void> redirect(@PathVariable String shortCode, HttpServletRequest httpRequest) {
-        String clientIp = clientIpResolver.resolve(httpRequest);
-        String longUrl = service.resolve(shortCode, clientIp);
+    public ResponseEntity<Void> redirect(@PathVariable String shortCode,
+                                          @RequestParam(name = "ref", required = false) String ref,
+                                          HttpServletRequest httpRequest) {
+        String clientIp = clientIpResolver.resolveForAnalytics(httpRequest);
+        // Who sent this click: the referring website (host only) and/or an owner-set
+        // ?ref=name tag. Both are optional and sanitized - see ClickSource.
+        ClickSource source = ClickSource.from(httpRequest.getHeader("Referer"), ref, httpRequest.getServerName());
+        String longUrl = service.resolve(shortCode, clientIp, source);
 
         return ResponseEntity.status(HttpStatus.FOUND)
                 .location(URI.create(longUrl))
