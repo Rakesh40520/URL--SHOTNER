@@ -99,6 +99,14 @@ app:
     max-requests: 5    # per client IP, for POST /api/v1/urls/{shortCode}/report
     window-seconds: 60 # per this many seconds
 
+  # OpenPhish API integration (https://openphish.eu/api/check?url={url})
+  # Free community-maintained phishing URL database. Enabled by default
+  # (works anonymously with up to 100 req/hr or with an optional API key).
+  openphish:
+    enabled: ${OPENPHISH_ENABLED:true}
+    base-url: ${OPENPHISH_BASE_URL:https://openphish.eu/api}
+    api-key: ${OPENPHISH_API_KEY:}
+
   # Google Safe Browsing (v4 threatMatches:find) integration. Off by
   # default - a URL shortener is a meaningful abuse target (spam, phishing,
   # malware distribution via a trusted-looking short link), so turn this on

@@ -32,3 +32,8 @@ services:
         value: "false"
       - key: SAFE_BROWSING_API_KEY
         sync: false
+      # OpenPhish community phishing URL database. Free & active by default.
+      - key: OPENPHISH_ENABLED
+        value: "true"
+      - key: OPENPHISH_API_KEY
+        sync: false

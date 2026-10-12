@@ -19,6 +19,8 @@ import com.example.urlshortener.exception.UrlBlockedException;
 import com.example.urlshortener.exception.UrlNotFoundException;
 import com.example.urlshortener.repository.UrlClickEventRepository;
 import com.example.urlshortener.repository.UrlMappingRepository;
+import com.example.urlshortener.safebrowsing.OpenPhishClient;
+import com.example.urlshortener.safebrowsing.OpenPhishResult;
 import com.example.urlshortener.safebrowsing.SafeBrowsingClient;
 import com.example.urlshortener.safebrowsing.SafeBrowsingResult;
 import com.example.urlshortener.sharding.ShardResolver;
@@ -65,6 +67,9 @@ class UrlShortenerServiceTest {
     @Mock
     private SafeBrowsingClient safeBrowsingClient;
 
+    @Mock
+    private OpenPhishClient openPhishClient;
+
     // Unlike cacheManager/clickEventPublisher/meterRegistry (all
     // constructor-injected but explicitly null-checked before use inside
     // the service, so a plain Mockito test leaving them unmocked is safe -
@@ -86,7 +91,9 @@ class UrlShortenerServiceTest {
     // Individual safety tests below override these defaults as needed.
     @BeforeEach
     void setUpSafeBrowsingDefaults() {
+        ReflectionTestUtils.setField(service, "openPhishClient", openPhishClient);
         lenient().when(safeBrowsingClient.check(anyString())).thenReturn(SafeBrowsingResult.safe());
+        lenient().when(openPhishClient.isEnabled()).thenReturn(false);
         ReflectionTestUtils.setField(service, "safeBrowsingFailOpen", true);
         ReflectionTestUtils.setField(service, "reportAutoDisableThreshold", 3);
         // Single-shard behavior by default (every code resolves to shard 0)
@@ -495,6 +502,21 @@ class UrlShortenerServiceTest {
     }
 
     @Test
+    void shorten_flaggedByOpenPhish_isRejected() {
+        ShortenRequest request = new ShortenRequest();
+        request.setLongUrl("https://paypal-fake-login.com");
+
+        when(openPhishClient.isEnabled()).thenReturn(true);
+        when(openPhishClient.check("https://paypal-fake-login.com"))
+                .thenReturn(OpenPhishResult.phish("PayPal", "verified", 123));
+
+        UnsafeUrlException ex = assertThrows(UnsafeUrlException.class, () -> service.shorten(request, BASE_URL, null));
+        assertTrue(ex.getMessage().contains("phishing"));
+        assertTrue(ex.getMessage().contains("PayPal"));
+        verifyNoInteractions(repository);
+    }
+
+    @Test
     void shorten_safeBrowsingUnavailable_failOpen_allowsCreation() {
         ShortenRequest request = new ShortenRequest();
         request.setLongUrl("https://example.com/fine");
@@ -546,6 +568,25 @@ class UrlShortenerServiceTest {
         when(repository.findByShortCode("flagged")).thenReturn(Optional.of(mapping));
 
         assertThrows(UrlBlockedException.class, () -> service.resolve("flagged", "203.0.113.5"));
+    }
+
+    @Test
+    void report_flaggedByOpenPhish_autoFlagsLink() {
+        UrlMapping mapping = UrlMapping.builder()
+                .id(1L).shortCode("phish123").longUrl("https://paypal-fake-login.com")
+                .createdAt(LocalDateTime.now()).reportCount(0)
+                .build();
+
+        when(repository.findByShortCode("phish123")).thenReturn(Optional.of(mapping));
+        when(openPhishClient.isEnabled()).thenReturn(true);
+        when(openPhishClient.check("https://paypal-fake-login.com"))
+                .thenReturn(OpenPhishResult.phish("PayPal", "verified", 123));
+
+        ReportResponse response = service.report("phish123");
+
+        assertTrue(response.isAutoFlagged());
+        assertEquals(UrlStatus.FLAGGED, mapping.getStatus());
+        assertTrue(mapping.getStatusReason().contains("phishing"));
     }
 
     @Test

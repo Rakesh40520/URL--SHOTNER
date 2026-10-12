@@ -27,6 +27,8 @@ import com.example.urlshortener.kafka.ClickEventPublisher;
 import com.example.urlshortener.repository.UrlClickEventRepository;
 import com.example.urlshortener.repository.UrlMappingRepository;
 import com.example.urlshortener.security.ManagementKeyVault;
+import com.example.urlshortener.safebrowsing.OpenPhishClient;
+import com.example.urlshortener.safebrowsing.OpenPhishResult;
 import com.example.urlshortener.safebrowsing.SafeBrowsingClient;
 import com.example.urlshortener.safebrowsing.SafeBrowsingResult;
 import com.example.urlshortener.sharding.ShardContext;
@@ -117,6 +119,10 @@ public class UrlShortenerService {
     // Same pattern: optional so plain-Mockito unit tests still build the service without it.
     @Autowired(required = false)
     private ManagementKeyVault keyVault;
+
+    // Optional OpenPhish client for zero-config community phishing detection.
+    @Autowired(required = false)
+    private OpenPhishClient openPhishClient;
 
     // Whether an inconclusive Safe Browsing answer (API disabled, or the
     // call itself failed/timed out) lets a link through or blocks it. True
@@ -661,6 +667,17 @@ public class UrlShortenerService {
      * at all (disabled, or the API call failed/timed out).
      */
     private void assertUrlIsSafeToShorten(String longUrl) {
+        if (openPhishClient != null && openPhishClient.isEnabled()) {
+            OpenPhishResult opResult = openPhishClient.check(longUrl);
+            if (opResult.found()) {
+                String brand = opResult.targetBrand() != null && !opResult.targetBrand().isBlank()
+                        ? " targeting " + opResult.targetBrand()
+                        : "";
+                throw new UnsafeUrlException(
+                        "This URL was flagged as a verified phishing site" + brand + " and can't be shortened.");
+            }
+        }
+
         SafeBrowsingResult result = safeBrowsingClient.check(longUrl);
 
         if (result.isUnsafe()) {
@@ -697,8 +714,22 @@ public class UrlShortenerService {
 
             boolean autoFlagged = false;
 
+            // Trigger phishing check on report via OpenPhish
+            if (openPhishClient != null && openPhishClient.isEnabled()) {
+                OpenPhishResult opResult = openPhishClient.check(mapping.getLongUrl());
+                if (opResult.found()) {
+                    String brand = opResult.targetBrand() != null && !opResult.targetBrand().isBlank()
+                            ? " (target: " + opResult.targetBrand() + ")"
+                            : "";
+                    mapping.setStatus(UrlStatus.FLAGGED);
+                    mapping.setStatusReason("Blocked: verified phishing threat" + brand);
+                    autoFlagged = true;
+                    evictFromCache(shortCode);
+                }
+            }
+
             // Trigger malicious threat check on report if Safe Browsing is configured
-            if (safeBrowsingClient != null && safeBrowsingClient.isEnabled()) {
+            if (!autoFlagged && safeBrowsingClient != null && safeBrowsingClient.isEnabled()) {
                 SafeBrowsingResult result = safeBrowsingClient.check(mapping.getLongUrl());
                 if (result.isUnsafe()) {
                     mapping.setStatus(UrlStatus.FLAGGED);
