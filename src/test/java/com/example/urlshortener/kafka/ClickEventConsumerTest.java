@@ -3,6 +3,7 @@ package com.example.urlshortener.kafka;
 import com.example.urlshortener.entity.UrlClickEvent;
 import com.example.urlshortener.repository.UrlClickEventRepository;
 import com.example.urlshortener.repository.UrlMappingRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -30,7 +31,12 @@ class ClickEventConsumerTest {
     @Mock
     private UrlClickEventRepository clickEventRepository;
 
-    private final ClickEventConsumer consumer = new ClickEventConsumer(urlMappingRepository, clickEventRepository);
+    private ClickEventConsumer consumer;
+
+    @BeforeEach
+    void setUp() {
+        consumer = new ClickEventConsumer(urlMappingRepository, clickEventRepository);
+    }
 
     @Test
     void onClickEvent_incrementsCountAndSavesClickEvent_whenLinkStillExists() {

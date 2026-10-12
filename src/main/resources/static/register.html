@@ -117,11 +117,11 @@
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Registration failed.');
 
-      // Success — show a confirmation then redirect to login
-      alertEl.textContent = 'Account created! Redirecting to login…';
+      // Account created but NOT logged in: the emailed code has to be entered first.
+      alertEl.textContent = 'Account created! Check your email for a 6-digit code…';
       alertEl.classList.add('success');
       alertEl.hidden = false;
-      setTimeout(() => window.location.href = '/login.html', 1500);
+      setTimeout(() => window.location.href = '/verify-email.html?sent=1&email=' + encodeURIComponent(data.email || email), 900);
     } catch (err) {
       alertEl.textContent = err.message;
       alertEl.classList.remove('success');

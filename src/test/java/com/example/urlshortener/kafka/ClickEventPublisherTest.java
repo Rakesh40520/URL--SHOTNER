@@ -1,5 +1,6 @@
 package com.example.urlshortener.kafka;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -19,7 +20,12 @@ class ClickEventPublisherTest {
     @Mock
     private KafkaTemplate<String, ClickEventMessage> kafkaTemplate;
 
-    private final ClickEventPublisher publisher = new ClickEventPublisher(kafkaTemplate);
+    private ClickEventPublisher publisher;
+
+    @BeforeEach
+    void setUp() {
+        publisher = new ClickEventPublisher(kafkaTemplate);
+    }
 
     @Test
     void publish_sendsToTheClicksTopic_keyedByShortCode() {

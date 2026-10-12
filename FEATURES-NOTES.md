@@ -40,3 +40,28 @@ SubscriptionServiceTest, ClickSourceTest, GeoLocationServiceTest, plus new cases
 - Saved on the server for signed-in owners: the key is stored ENCRYPTED (AES-256-GCM, secret from app.key-vault.secret, defaulting to JWT_SECRET). My Dispatches has a Key button to copy it. Links created before this update have no stored key (they were only ever kept as a hash) so they show no Key button; ownership still lets you view their stats.
 - Anonymous links are not stored on the server (no account to attach them to); the browser copy is the only one.
 - If you change JWT_SECRET (or app.key-vault.secret), stored keys can no longer be decrypted and the Key button disappears for those links. Set app.key-vault.secret separately if you plan to rotate JWT_SECRET.
+
+# Update: email verification + forgot password (emailed 6-digit codes)
+
+## How it works
+- Register no longer logs you in. It creates the account (unverified), emails a 6-digit code and sends you to verify-email.html. Entering the right code verifies the address and logs you in.
+- Login is refused for unverified accounts (only after the password is correct, so it can't be used to find out who is registered). The login page then sends you to verify-email.html, which asks for a fresh code.
+- Forgot password: login page -> "Forgot password?" -> enter email -> enter the code + a new password. The answer is the same whether or not the email is registered.
+- Codes: 6 digits, valid 10 minutes, single use, stored only as a bcrypt hash, 5 wrong guesses burn the code, a new code replaces the old one, max 1 email per 60 s and 5 per hour per address.
+- Existing accounts are treated as verified (the new column is empty for them), so nobody is locked out by the upgrade.
+- Re-registering an address that never finished verifying just updates it and sends a new code, so nobody can squat on an address.
+- Endpoints: POST /api/v1/auth/{register, verify-email, resend-code, login, forgot-password, reset-password}.
+
+## Email setup (REQUIRED for real delivery)
+Render's free web services BLOCK outbound SMTP, so mail is sent over an HTTPS API. Easiest: Brevo (free, 300 emails/day, no domain needed).
+1. Create a free account at brevo.com, go to Senders and add + verify the email address you want codes to come from.
+2. Create an API key (SMTP & API -> API Keys).
+3. On Render -> your service -> Environment add:  MAIL_PROVIDER=brevo   MAIL_FROM_EMAIL=<the verified sender>   BREVO_API_KEY=<key>   (optional MAIL_FROM_NAME)
+4. Redeploy. (Resend also works: MAIL_PROVIDER=resend + RESEND_API_KEY, but it only delivers to your own address until you verify a domain.)
+- With no MAIL_PROVIDER set the app uses "log" mode: emails are NOT sent, the code is printed in the server log. Fine for local development, not for production.
+- If the key is missing/wrong, register shows "couldn't send the email" and the log says why; the app itself still starts.
+
+## Limits worth knowing
+- Existing login tokens stay valid after a password reset (tokens are stateless, up to 24 h).
+- Rate limiting is per email address, not per IP.
+- Changing an account's email isn't part of this.

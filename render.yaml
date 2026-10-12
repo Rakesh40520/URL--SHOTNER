@@ -19,3 +19,11 @@ services:
       # Does not affect rate limiting.
       - key: APP_GEO_TRUST_FORWARDED_FOR
         value: "true"
+      # Email verification + password reset codes. Without these the app prints codes
+      # to its log instead of emailing them. Fill the secret values in the Render dashboard.
+      - key: MAIL_PROVIDER
+        value: brevo
+      - key: MAIL_FROM_EMAIL
+        sync: false
+      - key: BREVO_API_KEY
+        sync: false

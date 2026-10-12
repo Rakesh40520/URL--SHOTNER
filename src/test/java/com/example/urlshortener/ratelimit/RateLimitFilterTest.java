@@ -109,7 +109,6 @@ class RateLimitFilterTest {
     @Test
     void nonPostRequest_isNeverRateLimited() throws Exception {
         when(request.getMethod()).thenReturn("GET");
-        when(request.getRequestURI()).thenReturn("/api/v1/urls");
 
         filter.doFilterInternal(request, response, filterChain);
 

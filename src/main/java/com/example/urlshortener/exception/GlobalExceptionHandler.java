@@ -75,6 +75,48 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.FORBIDDEN, ex.getMessage());
     }
 
+    @ExceptionHandler(EmailNotVerifiedException.class)
+    public ResponseEntity<Map<String, Object>> handleEmailNotVerified(EmailNotVerifiedException ex) {
+        Map<String, Object> body = errorBody(HttpStatus.FORBIDDEN, ex.getMessage());
+        body.put("code", "EMAIL_NOT_VERIFIED");
+        body.put("email", ex.getEmail());
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(body);
+    }
+
+    @ExceptionHandler(InvalidCodeException.class)
+    public ResponseEntity<Map<String, Object>> handleInvalidCode(InvalidCodeException ex) {
+        Map<String, Object> body = errorBody(HttpStatus.BAD_REQUEST, ex.getMessage());
+        body.put("code", "INVALID_CODE");
+        if (ex.getAttemptsLeft() >= 0) body.put("attemptsLeft", ex.getAttemptsLeft());
+        return ResponseEntity.badRequest().body(body);
+    }
+
+    @ExceptionHandler(CodeRateLimitException.class)
+    public ResponseEntity<Map<String, Object>> handleCodeRateLimit(CodeRateLimitException ex) {
+        Map<String, Object> body = errorBody(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage());
+        body.put("code", "CODE_RATE_LIMITED");
+        body.put("retryAfterSeconds", ex.getRetryAfterSeconds());
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", String.valueOf(ex.getRetryAfterSeconds()))
+                .body(body);
+    }
+
+    @ExceptionHandler(EmailDeliveryException.class)
+    public ResponseEntity<Map<String, Object>> handleEmailDelivery(EmailDeliveryException ex) {
+        Map<String, Object> body = errorBody(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
+        body.put("code", "EMAIL_DELIVERY_FAILED");
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(body);
+    }
+
+    private static Map<String, Object> errorBody(HttpStatus status, String message) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("timestamp", LocalDateTime.now());
+        body.put("status", status.value());
+        body.put("error", status.getReasonPhrase());
+        body.put("message", message);
+        return body;
+    }
+
     @ExceptionHandler(PlanLimitException.class)
     public ResponseEntity<Map<String, Object>> handlePlanLimit(PlanLimitException ex) {
         // 403 (not 402): the request is understood and the user is known, they

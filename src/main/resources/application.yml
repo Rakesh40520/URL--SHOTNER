@@ -21,24 +21,6 @@ spring:
         format_sql: true
     open-in-view: false
 
-  # Email SMTP configuration (Gmail, SendGrid, Mailgun, Amazon SES, etc.)
-  # If credentials are not supplied, the app automatically runs in Dev Mode (logging OTP to console).
-  mail:
-    host: ${SPRING_MAIL_HOST:smtp.gmail.com}
-    port: ${SPRING_MAIL_PORT:587}
-    username: ${SPRING_MAIL_USERNAME:}
-    password: ${SPRING_MAIL_PASSWORD:}
-    properties:
-      mail:
-        smtp:
-          auth: true
-          starttls:
-            enable: true
-            required: true
-          connectiontimeout: 5000
-          timeout: 5000
-          writetimeout: 5000
-
   # Only actually connected to when app.redis.enabled=true (see
   # RedisRateLimitConfig / CacheConfig) - otherwise Spring Data Redis just
   # builds a connection factory that's never touched, so this is harmless
@@ -74,6 +56,18 @@ app:
   # caller sending a different fake X-Forwarded-For on every request.
   trust-proxy-headers: false
 
+  # Email for verification and password-reset codes. Sent over HTTPS APIs (Render's
+  # free web services block outbound SMTP). provider: log (dev: prints the email to
+  # the server log), brevo, or resend. See FEATURES-NOTES.md for setup.
+  mail:
+    provider: ${MAIL_PROVIDER:log}
+    from-email: ${MAIL_FROM_EMAIL:no-reply@example.com}   # must be a sender you verified with the provider
+    from-name: ${MAIL_FROM_NAME:Dispatch}
+    brevo-api-key: ${BREVO_API_KEY:}
+    resend-api-key: ${RESEND_API_KEY:}
+  auth:
+    code-ttl-minutes: 10
+
   # Click location + referrer analytics. Location comes from a free HTTPS IP-geolocation
   # API called in the background AFTER the redirect, so it never slows a redirect down.
   # Set trust-forwarded-for=true when deployed behind a proxy (Render, etc.), otherwise
@@ -100,11 +94,6 @@ app:
   auth-rate-limit:
     max-requests: 10   # per client IP, for POST /api/v1/auth/{login,register}
     window-seconds: 60 # per this many seconds
-
-  mail:
-    from: ${APP_MAIL_FROM:Dispatch URL Shortener <noreply@dispatch.io>}
-    otp-validity-minutes: 10
-    cooldown-seconds: 60
 
   report-rate-limit:
     max-requests: 5    # per client IP, for POST /api/v1/urls/{shortCode}/report

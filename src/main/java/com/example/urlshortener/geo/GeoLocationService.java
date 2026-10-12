@@ -45,7 +45,7 @@ public class GeoLocationService {
     private static final long MISS_TTL_MS = Duration.ofMinutes(5).toMillis();
     private static final long WARN_EVERY_MS = Duration.ofMinutes(1).toMillis();
 
-    private record Entry(Optional<GeoInfo> info, long expiresAt) { }
+    private record CacheEntry(Optional<GeoInfo> info, long expiresAt) { }
 
     private final boolean enabled;
     private final List<String> urlTemplates;
@@ -53,8 +53,8 @@ public class GeoLocationService {
     private final ObjectMapper mapper = new ObjectMapper();
     private final AtomicLong lastWarn = new AtomicLong(0);
 
-    private final Map<String, Entry> cache = new LinkedHashMap<>(256, 0.75f, true) {
-        @Override protected boolean removeEldestEntry(Map.Entry<String, Entry> e) { return size() > MAX_CACHE; }
+    private final Map<String, CacheEntry> cache = new LinkedHashMap<>(256, 0.75f, true) {
+        @Override protected boolean removeEldestEntry(Map.Entry<String, CacheEntry> e) { return size() > MAX_CACHE; }
     };
 
     public GeoLocationService(
@@ -72,12 +72,12 @@ public class GeoLocationService {
         }
         long now = System.currentTimeMillis();
         synchronized (cache) {
-            Entry e = cache.get(ip);
+            CacheEntry e = cache.get(ip);
             if (e != null && e.expiresAt() > now) return e.info();
         }
         Optional<GeoInfo> result = fetchFromProviders(ip);
         synchronized (cache) {
-            cache.put(ip, new Entry(result, now + (result.isPresent() ? HIT_TTL_MS : MISS_TTL_MS)));
+            cache.put(ip, new CacheEntry(result, now + (result.isPresent() ? HIT_TTL_MS : MISS_TTL_MS)));
         }
         return result;
     }
