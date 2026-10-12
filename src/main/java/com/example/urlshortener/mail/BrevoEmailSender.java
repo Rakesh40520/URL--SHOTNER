@@ -47,7 +47,10 @@ public class BrevoEmailSender implements EmailSender {
     @Override
     public void send(String toEmail, String subject, String htmlBody, String textBody) {
         if (apiKey == null || apiKey.isBlank()) {
-            throw new EmailDeliveryException("BREVO_API_KEY is not set", null);
+            throw new EmailDeliveryException("BREVO_API_KEY is not configured in environment variables.", null);
+        }
+        if (fromEmail == null || fromEmail.isBlank() || "no-reply@example.com".equalsIgnoreCase(fromEmail.trim())) {
+            throw new EmailDeliveryException("MAIL_FROM_EMAIL must be set to your verified Brevo sender email address.", null);
         }
         try {
             String json = mapper.writeValueAsString(Map.of(

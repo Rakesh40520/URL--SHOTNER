@@ -25,7 +25,7 @@ public class ResendEmailSender implements EmailSender {
 
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
     private final ObjectMapper mapper = new ObjectMapper();
-    private final String apiKey, from;
+    private final String apiKey, from, fromEmail;
 
     public ResendEmailSender(@Value("${app.mail.resend-api-key:}") String apiKey,
                              @Value("${app.mail.from-email}") String fromEmail,
@@ -36,13 +36,17 @@ public class ResendEmailSender implements EmailSender {
             org.slf4j.LoggerFactory.getLogger(getClass()).error("RESEND_API_KEY is not set - verification and reset emails cannot be sent.");
         }
         this.apiKey = apiKey;
+        this.fromEmail = fromEmail;
         this.from = fromName + " <" + fromEmail + ">";
     }
 
     @Override
     public void send(String toEmail, String subject, String htmlBody, String textBody) {
         if (apiKey == null || apiKey.isBlank()) {
-            throw new EmailDeliveryException("RESEND_API_KEY is not set", null);
+            throw new EmailDeliveryException("RESEND_API_KEY is not configured in environment variables.", null);
+        }
+        if (fromEmail == null || fromEmail.isBlank() || "no-reply@example.com".equalsIgnoreCase(fromEmail.trim())) {
+            throw new EmailDeliveryException("MAIL_FROM_EMAIL must be set to your verified sender or onboarding@resend.dev.", null);
         }
         try {
             String json = mapper.writeValueAsString(Map.of(
