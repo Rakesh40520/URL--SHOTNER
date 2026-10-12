@@ -56,6 +56,7 @@
           <th>Original URL</th>
           <th>Short Code</th>
           <th>Created</th>
+          <th>Expires</th>
           <th>Clicks</th>
           <th>Status</th>
           <th>Actions</th>
@@ -63,9 +64,9 @@
       </thead>
       <tbody id="url-tbody">
         <!-- skeleton rows while loading -->
-        <tr class="loading-row"><td colspan="6"></td></tr>
-        <tr class="loading-row"><td colspan="6"></td></tr>
-        <tr class="loading-row"><td colspan="6"></td></tr>
+        <tr class="loading-row"><td colspan="7"></td></tr>
+        <tr class="loading-row"><td colspan="7"></td></tr>
+        <tr class="loading-row"><td colspan="7"></td></tr>
       </tbody>
     </table>
   </div>
@@ -151,7 +152,10 @@
 
   function fmt(iso) {
     if (!iso) return '—';
-    return new Date(iso).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '—';
+    return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })
+      + ', ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
   }
 
   function esc(str) {
@@ -183,7 +187,7 @@
     const pageData = await listRes.json();
 
     if (!listRes.ok) {
-      tbody.innerHTML = `<tr><td colspan="6" style="padding:24px;color:var(--danger);font-family:var(--font-mono);font-size:.85rem">${esc(pageData.message || 'Failed to load.')}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="7" style="padding:24px;color:var(--danger);font-family:var(--font-mono);font-size:.85rem">${esc(pageData.message || 'Failed to load.')}</td></tr>`;
       return;
     }
 
@@ -286,6 +290,7 @@
           </button>
         </td>
         <td data-label="Created">${fmt(u.createdAt)}</td>
+        <td data-label="Expires">${u.expiresAt ? fmt(u.expiresAt) : 'Never'}</td>
         <td class="td-clicks" data-label="Clicks">${u.clickCount}</td>
         <td data-label="Status">
           <span class="badge badge-${badgeClass(u.status)}" title="${esc(u.statusReason || '')}">${esc(u.status)}</span>

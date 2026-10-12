@@ -1,11 +1,14 @@
 package com.example.urlshortener.dto;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
+
+import java.time.LocalDateTime;
 
 @Getter
 @Setter
@@ -37,4 +40,8 @@ public class ShortenRequest {
     // Optional: number of days until the link expires
     @Positive(message = "expiresInDays must be a positive number")
     private Integer expiresInDays;
+
+    // Optional: explicit expiration date and time
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm[:ss]")
+    private LocalDateTime expiresAt;
 }

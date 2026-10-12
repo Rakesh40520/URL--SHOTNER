@@ -158,9 +158,15 @@ public class UrlShortenerService {
         assertUrlIsSafeToShorten(longUrl);
 
         LocalDateTime now = LocalDateTime.now();
-        LocalDateTime expiresAt = request.getExpiresInDays() != null
-                ? now.plusDays(request.getExpiresInDays())
-                : null;
+        LocalDateTime expiresAt = null;
+        if (request.getExpiresAt() != null) {
+            if (request.getExpiresAt().isBefore(now)) {
+                throw new InvalidUrlException("Expiration date and time must be in the future.");
+            }
+            expiresAt = request.getExpiresAt();
+        } else if (request.getExpiresInDays() != null) {
+            expiresAt = now.plusDays(request.getExpiresInDays());
+        }
 
         // Generated once per link, shown to the caller exactly once in the
         // response below, and only ever stored as a hash after that. This is

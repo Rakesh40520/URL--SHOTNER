@@ -52,7 +52,10 @@
 
   function fmt(iso) {
     if (!iso) return '—';
-    return new Date(iso).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '—';
+    return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })
+      + ', ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
   }
 
   function esc(str) {

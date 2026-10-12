@@ -295,7 +295,7 @@ input::placeholder { color: #8a8266; }
 .track-form-row button:hover { background: var(--ink); }
 
 .track-result { margin-top: 20px; border-top: 1px dashed var(--line); padding-top: 18px; }
-.track-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; margin-bottom: 14px; }
+.track-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 14px; margin-bottom: 14px; }
 .track-label {
   display: block; font-family: var(--font-mono); font-size: .65rem;
   text-transform: uppercase; letter-spacing: .08em; color: var(--ink-soft); margin-bottom: 3px;

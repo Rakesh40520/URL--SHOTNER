@@ -12,12 +12,20 @@
 /* ── Link history (saved on this device, keys included) ── */
 function addToSessionHistory(entry) { UI.history.add(entry); }
 
-/* ── Date formatter ── */
-function formatDate(iso) {
+/* ── Date and time formatter ── */
+function formatDateTime(iso) {
   if (!iso) return null;
-  return new Date(iso).toLocaleDateString(undefined, {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  return d.toLocaleDateString(undefined, {
     day: '2-digit', month: 'short', year: 'numeric'
+  }) + ', ' + d.toLocaleTimeString(undefined, {
+    hour: '2-digit', minute: '2-digit'
   });
+}
+
+function formatDate(iso) {
+  return formatDateTime(iso);
 }
 
 /* ── Dispatch progress animation ──────────────────────────────────────
@@ -158,6 +166,7 @@ async function applyPlanToForm() {
   const keep = sel.value;
   const options = [[1, '1 day'], [7, '7 days'], [30, '30 days'], [90, '90 days'], [365, '1 year']]
     .filter(([d]) => plan.maxExpiryDays == null || d <= plan.maxExpiryDays);
+  options.push(['custom', 'Custom Date & Time...']);
   if (plan.maxExpiryDays == null) options.push(['', 'Never']);
   sel.innerHTML = options.map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
   sel.value = options.some(([v]) => String(v) === keep) ? keep : String(options.find(([v]) => v === 7)?.[0] ?? options[0][0]);
@@ -173,6 +182,24 @@ async function applyPlanToForm() {
   hint.hidden = false;
 }
 applyPlanToForm();
+
+// Toggle custom date/time field when custom option is selected
+const expirySel = document.getElementById('expiresInDays');
+const customExpiryRow = document.getElementById('custom-expiry-row');
+if (expirySel && customExpiryRow) {
+  expirySel.addEventListener('change', () => {
+    const isCustom = expirySel.value === 'custom';
+    customExpiryRow.hidden = !isCustom;
+    if (isCustom) {
+      const customInput = document.getElementById('customExpiresAt');
+      if (customInput && !customInput.value) {
+        const d = new Date(Date.now() + 7 * 86400000);
+        d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+        customInput.value = d.toISOString().slice(0, 16);
+      }
+    }
+  });
+}
 
 /* ── Dispatch form ── */
 function showFormError(msg) {
@@ -202,7 +229,12 @@ async function dispatchLink() {
 
   const payload = { longUrl };
   if (customAlias) payload.customAlias = customAlias;
-  if (expiresInDays) payload.expiresInDays = Number(expiresInDays);
+  if (expiresInDays === 'custom') {
+    const customDt = document.getElementById('customExpiresAt')?.value;
+    if (customDt) payload.expiresAt = customDt;
+  } else if (expiresInDays) {
+    payload.expiresInDays = Number(expiresInDays);
+  }
 
   // Give up after 60s so a dead server can't leave the overlay up forever.
   const controller = new AbortController();
@@ -444,13 +476,13 @@ document.getElementById('track-btn').addEventListener('click', async () => {
     }
 
     document.getElementById('track-clicks').textContent  = data.clickCount;
-    document.getElementById('track-created').textContent = formatDate(data.createdAt) || '—';
+    document.getElementById('track-created').textContent = formatDateTime(data.createdAt) || '—';
+    const trackExpires = document.getElementById('track-expires');
+    if (trackExpires) {
+      trackExpires.textContent = data.expiresAt ? formatDateTime(data.expiresAt) : 'Never';
+    }
     document.getElementById('track-last').textContent    = data.lastAccessedAt
-      ? formatDate(data.lastAccessedAt) : 'Not yet clicked';
-    // data.status comes straight from the API ("Active"/"Flagged"/
-    // "Disabled") - expired is still checked client-side first since a
-    // link can be both expired and otherwise Active/Flagged/Disabled, and
-    // "Expired" is the more useful thing to show here.
+      ? formatDateTime(data.lastAccessedAt) : 'Not yet clicked';
     document.getElementById('track-status').textContent  = data.expired ? 'Expired' : (data.status || 'Active');
     document.getElementById('track-dest-url').textContent = data.longUrl;
     result.hidden = false;

@@ -109,14 +109,28 @@ public class SubscriptionService {
 
         Integer maxDays = plan.getMaxExpiryDays();
         if (maxDays != null) {
-            Integer requested = request.getExpiresInDays();
-            if (requested == null) {
-                request.setExpiresInDays(maxDays);        // no "never expires" on this plan
-            } else if (requested > maxDays) {
-                throw new PlanLimitException(PlanLimitException.FEATURE_LOCKED,
-                        "The " + plan.getDisplayName() + " plan allows links to last up to "
-                                + maxDays + " days.",
-                        SubscriptionPlan.cheapestAllowingExpiry(requested));
+            if (request.getExpiresAt() != null) {
+                if (request.getExpiresAt().isBefore(LocalDateTime.now())) {
+                    throw new IllegalArgumentException("Expiration date and time must be in the future.");
+                }
+                LocalDateTime maxAllowed = LocalDateTime.now().plusDays(maxDays).plusMinutes(5);
+                if (request.getExpiresAt().isAfter(maxAllowed)) {
+                    long daysDiff = java.time.Duration.between(LocalDateTime.now(), request.getExpiresAt()).toDays();
+                    throw new PlanLimitException(PlanLimitException.FEATURE_LOCKED,
+                            "The " + plan.getDisplayName() + " plan allows links to last up to "
+                                    + maxDays + " days.",
+                            SubscriptionPlan.cheapestAllowingExpiry((int) Math.max(1, daysDiff)));
+                }
+            } else {
+                Integer requested = request.getExpiresInDays();
+                if (requested == null) {
+                    request.setExpiresInDays(maxDays);        // no "never expires" on this plan
+                } else if (requested > maxDays) {
+                    throw new PlanLimitException(PlanLimitException.FEATURE_LOCKED,
+                            "The " + plan.getDisplayName() + " plan allows links to last up to "
+                                    + maxDays + " days.",
+                            SubscriptionPlan.cheapestAllowingExpiry(requested));
+                }
             }
         }
 
