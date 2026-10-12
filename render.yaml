@@ -27,3 +27,8 @@ services:
         sync: false
       - key: BREVO_API_KEY
         sync: false
+      # Google Safe Browsing threat detection (malware, phishing). Optional.
+      - key: SAFE_BROWSING_ENABLED
+        value: "false"
+      - key: SAFE_BROWSING_API_KEY
+        sync: false
