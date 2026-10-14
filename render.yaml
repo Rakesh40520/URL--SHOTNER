@@ -9,31 +9,83 @@ services:
     dockerfilePath: ./Dockerfile
     healthCheckPath: /actuator/health
     envVars:
+      # ─── Core ───────────────────────────────────────────────────────
       # Auto-generate a strong JWT secret (Render creates a random value
       # on first deploy and keeps it stable across redeploys)
       - key: JWT_SECRET
         generateValue: true
       - key: PORT
         value: "10000"
+
+      # ─── Proxy / Network ───────────────────────────────────────────
       # Real visitor IP (X-Forwarded-For) for click location analytics only.
       # Does not affect rate limiting.
       - key: APP_GEO_TRUST_FORWARDED_FOR
         value: "true"
-      # Email verification + password reset codes. Without these the app prints codes
-      # to its log instead of emailing them. Fill the secret values in the Render dashboard.
+      # Trust proxy X-Forwarded-For for rate limiting too (safe on Render
+      # because Render strips client-supplied XFF). Without this, rate
+      # limiting sees Render's internal IP and treats all visitors as one.
+      - key: APP_TRUST_PROXY_HEADERS
+        value: "true"
+
+      # ─── CORS ───────────────────────────────────────────────────────
+      # Lock down to your real frontend origin(s). Comma-separated.
+      # Example: https://url-shortener-xxxx.onrender.com
+      - key: APP_CORS_ALLOWED_ORIGINS
+        sync: false
+
+      # ─── Email (Brevo recommended) ─────────────────────────────────
+      # Email verification + password reset codes. Without these the app
+      # prints codes to its log instead of emailing them.
       - key: MAIL_PROVIDER
         value: brevo
       - key: MAIL_FROM_EMAIL
         sync: false
+      - key: MAIL_FROM_NAME
+        value: Dispatch
       - key: BREVO_API_KEY
         sync: false
-      # Google Safe Browsing threat detection (malware, phishing). Optional.
-      - key: SAFE_BROWSING_ENABLED
-        value: "false"
-      - key: SAFE_BROWSING_API_KEY
-        sync: false
-      # OpenPhish community phishing URL database. Free & active by default.
+      # Alternative: Resend (uncomment if using Resend instead of Brevo)
+      # - key: RESEND_API_KEY
+      #   sync: false
+
+      # ─── Security: OpenPhish ────────────────────────────────────────
+      # Free community phishing URL database. Active by default.
       - key: OPENPHISH_ENABLED
         value: "true"
       - key: OPENPHISH_API_KEY
         sync: false
+
+      # ─── Security: Google Safe Browsing ─────────────────────────────
+      # Malware + phishing threat detection. Get a free API key at
+      # https://developers.google.com/safe-browsing/v4/get-started
+      - key: SAFE_BROWSING_ENABLED
+        value: "true"
+      - key: SAFE_BROWSING_API_KEY
+        sync: false
+
+      # ─── Redis (distributed cache + rate limiting) ──────────────────
+      # Enable only if you have a Redis instance (e.g. Render Redis,
+      # Upstash, Railway). Switches rate limiter + redirect cache from
+      # in-memory to shared Redis-backed.
+      - key: APP_REDIS_ENABLED
+        value: "false"
+      - key: REDIS_HOST
+        sync: false
+      - key: REDIS_PORT
+        value: "6379"
+
+      # ─── Kafka (async click tracking) ───────────────────────────────
+      # Enable only if you have a Kafka broker (e.g. Upstash Kafka,
+      # Confluent Cloud). Makes click recording async.
+      - key: APP_KAFKA_ENABLED
+        value: "false"
+      - key: KAFKA_BOOTSTRAP_SERVERS
+        sync: false
+
+      # ─── Key Vault ─────────────────────────────────────────────────
+      # Separate AES-256 secret for encrypting stored management keys.
+      # If not set, falls back to JWT_SECRET. Set this if you ever plan
+      # to rotate JWT_SECRET without losing stored keys.
+      # - key: APP_KEY_VAULT_SECRET
+      #   generateValue: true
