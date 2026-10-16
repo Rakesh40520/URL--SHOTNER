@@ -74,6 +74,10 @@ services:
         sync: false
       - key: REDIS_PORT
         value: "6379"
+      - key: REDIS_PASSWORD
+        sync: false
+      - key: REDIS_SSL
+        value: "false"
 
       # ─── Kafka (async click tracking) ───────────────────────────────
       # Enable only if you have a Kafka broker (e.g. Upstash Kafka,

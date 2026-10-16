@@ -29,6 +29,9 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      ssl:
+        enabled: ${REDIS_SSL:false}
 
   # Only relevant when app.kafka.enabled=true (see kafka/ClickEventPublisher
   # /ClickEventConsumer) - otherwise nothing in this app ever opens a
@@ -147,7 +150,7 @@ app:
   # Redis-backed implementations shared across every instance of this app.
   # See docker-compose.yml's `redis` service.
   redis:
-    enabled: false
+    enabled: ${APP_REDIS_ENABLED:false}
 
   # Off by default. When true, click tracking on every redirect becomes
   # async - UrlShortenerService.recordClick publishes to Kafka and returns
@@ -155,7 +158,7 @@ app:
   # does the actual DB write on its own thread. See spring.kafka above for
   # broker connection details.
   kafka:
-    enabled: false
+    enabled: ${APP_KAFKA_ENABLED:false}
 
   cache:
     # How long a cached short-code -> long-URL mapping can live in Redis
